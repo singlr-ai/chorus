@@ -1,10 +1,12 @@
-use std::process::Stdio;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::{FutureExt as _, pin_mut, select_biased};
 use remote::SshConnectionOptions;
-use util::{command::new_command, shell::ShellKind};
+use util::{
+    command::{Stdio, new_command},
+    shell::ShellKind,
+};
 
 use crate::error::{RemoteFailure, RemoteFailureKind, SingCommandError};
 
