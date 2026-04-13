@@ -3,8 +3,8 @@ use gh_workflow::*;
 use crate::tasks::workflows::{
     runners,
     steps::{
-        self, CommonJobConditions, FluentBuilder, NamedJob, RepositoryTarget,
-        TokenPermissions, named,
+        self, CommonJobConditions, FluentBuilder, NamedJob, RepositoryTarget, TokenPermissions,
+        named,
     },
     vars::{self, StepOutput, WorkflowInput},
 };

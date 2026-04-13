@@ -71,5 +71,11 @@ jobs:
           fi
           cargo --version
 
+      - name: Configure macOS SDK environment
+        run: |
+          sdk_root="$(xcrun --sdk macosx --show-sdk-path)"
+          echo "SDKROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=$sdk_root" >> "$GITHUB_ENV"
+
       - name: Check macOS build
         run: cargo check -p sing_bridge -p zed
