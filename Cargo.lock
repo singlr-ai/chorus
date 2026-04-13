@@ -6125,6 +6125,7 @@ name = "feedback"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "release_channel",
  "system_specs",
  "urlencoding",
  "util",
@@ -11558,6 +11559,7 @@ dependencies = [
  "notifications",
  "picker",
  "project",
+ "release_channel",
  "schemars",
  "serde",
  "settings",
@@ -21708,6 +21710,7 @@ dependencies = [
  "postage",
  "pretty_assertions",
  "project",
+ "release_channel",
  "remote",
  "schemars",
  "serde",

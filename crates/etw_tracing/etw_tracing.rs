@@ -572,7 +572,7 @@ pub struct EtwSession {
 }
 
 pub fn launch_etw_recording(heap_pid: Option<u32>, output_path: &Path) -> Result<EtwSession> {
-    let sock_path = std::env::temp_dir().join(format!("zed-etw-{}.sock", std::process::id()));
+    let sock_path = std::env::temp_dir().join(format!("chorus-etw-{}.sock", std::process::id()));
 
     _ = std::fs::remove_file(&sock_path);
     let listener = net::UnixListener::bind(&sock_path).context("Bind Unix socket for ETW IPC")?;

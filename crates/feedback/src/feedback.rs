@@ -1,4 +1,5 @@
 use gpui::{App, ClipboardItem, PromptLevel, actions};
+use release_channel::{ISSUE_TRACKER_URL, REPOSITORY_URL};
 use system_specs::{CopySystemSpecsIntoClipboard, SystemSpecs};
 use util::ResultExt;
 use workspace::Workspace;
@@ -12,26 +13,22 @@ actions!(
     ]
 );
 
-const ZED_REPO_URL: &str = "https://github.com/zed-industries/zed";
-
-const REQUEST_FEATURE_URL: &str = "https://github.com/zed-industries/zed/discussions/new/choose";
+const REQUEST_FEATURE_URL: &str = ISSUE_TRACKER_URL;
 
 fn file_bug_report_url(specs: &SystemSpecs) -> String {
     format!(
-        concat!(
-            "https://github.com/zed-industries/zed/issues/new",
-            "?",
-            "template=10_bug_report.yml",
-            "&",
-            "environment={}"
-        ),
+        concat!("{}/new", "?", "title={}", "&", "environment={}"),
+        ISSUE_TRACKER_URL,
+        urlencoding::encode("Bug report"),
         urlencoding::encode(&specs.to_string())
     )
 }
 
 fn email_zed_url(specs: &SystemSpecs) -> String {
     format!(
-        concat!("mailto:hi@zed.dev", "?", "body={}"),
+        concat!("{}/new", "?", "title={}", "&", "body={}"),
+        ISSUE_TRACKER_URL,
+        urlencoding::encode("Feedback"),
         email_body(specs)
     )
 }
@@ -91,7 +88,7 @@ pub fn init(cx: &mut App) {
                 .detach();
             })
             .register_action(move |_, _: &OpenZedRepo, _, cx| {
-                cx.open_url(ZED_REPO_URL);
+                cx.open_url(REPOSITORY_URL);
             });
     })
     .detach();
