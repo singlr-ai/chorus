@@ -79,6 +79,12 @@ jobs:
           fi
           cargo --version
 
+      - name: Configure macOS SDK environment
+        run: |
+          sdk_root="$(xcrun --sdk macosx --show-sdk-path)"
+          echo "SDKROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=$sdk_root" >> "$GITHUB_ENV"
+
       - name: Build macOS app bundle
         run: ./script/bundle-mac -d aarch64-apple-darwin
 

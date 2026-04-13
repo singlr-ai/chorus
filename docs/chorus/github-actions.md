@@ -19,6 +19,12 @@
   - Runs for pull requests labeled `build-artifacts`
   - Uploads a Linux bundle and an Apple Silicon macOS app bundle
 
+## Disabled Upstream Workflows
+
+- Chorus keeps only the workflows that apply to the public fork today.
+- Upstream Zed workflows for release automation, documentation suggestions, reviewer assignment, community bots, and private infrastructure are intentionally removed from `.github/workflows`.
+- If Chorus later needs one of those capabilities, add back a Chorus-owned workflow instead of re-enabling the upstream file unchanged.
+
 ## Testing on a MacBook Pro
 
 1. Push your branch to `origin`
