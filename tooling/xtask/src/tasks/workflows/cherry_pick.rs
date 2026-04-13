@@ -2,7 +2,7 @@ use gh_workflow::*;
 
 use crate::tasks::workflows::{
     runners,
-    steps::{self, NamedJob, RepositoryTarget, TokenPermissions, named},
+    steps::{self, CommonJobConditions, NamedJob, RepositoryTarget, TokenPermissions, named},
     vars::{StepOutput, WorkflowInput},
 };
 
@@ -64,6 +64,7 @@ fn run_cherry_pick(
     named::job(
         Job::default()
             .runs_on(runners::LINUX_SMALL)
+            .with_repository_owner_guard()
             .add_step(steps::checkout_repo())
             .add_step(authenticate)
             .add_step(cherry_pick(branch, commit, channel, &token)),

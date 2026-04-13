@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::tasks::workflows::{
     runners::{self, Platform},
-    steps::{self, FluentBuilder as _, NamedJob, named},
+    steps::{self, CommonJobConditions, FluentBuilder as _, NamedJob, named},
     vars::{self, WorkflowInput},
 };
 
@@ -88,6 +88,7 @@ fn cron_unit_evals_job() -> Job {
 
     Job::default()
         .runs_on(runners::LINUX_DEFAULT)
+        .with_repository_owner_guard()
         .strategy(Strategy::default().fail_fast(false).matrix(json!({
             "model": UNIT_EVAL_MODELS
         })))
@@ -108,6 +109,7 @@ fn unit_evals(commit: Option<&WorkflowInput>) -> Job {
 
     Job::default()
         .runs_on(runners::LINUX_DEFAULT)
+        .with_repository_owner_guard()
         .add_step(steps::checkout_repo())
         .add_step(steps::setup_cargo_config(Platform::Linux))
         .add_step(steps::cache_rust_dependencies_namespace())

@@ -1,0 +1,106 @@
+name: Chorus Artifacts
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    types:
+      - labeled
+      - synchronize
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chorus-artifacts-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+  CARGO_INCREMENTAL: '0'
+
+defaults:
+  run:
+    shell: bash -euxo pipefail {0}
+
+jobs:
+  linux_bundle:
+    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') || (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          clean: false
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Build Linux bundle
+        run: ./script/bundle-linux
+
+      - name: Upload Linux bundle
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: chorus-linux-x86_64
+          path: target/release/zed-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+      - name: Upload Linux remote server
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: chorus-remote-server-linux-x86_64
+          path: target/zed-remote-server-linux-x86_64.gz
+          if-no-files-found: error
+
+  macos_bundle:
+    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') || (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          clean: false
+
+      - name: Install macOS build dependencies
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          if ! brew list cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+          cargo --version
+
+      - name: Build macOS app bundle
+        run: ./script/bundle-mac -d aarch64-apple-darwin
+
+      - name: Archive macOS app bundle
+        run: |
+          app_path="$(find target -type d -path '*/debug/bundle/osx/*.app' -print -quit)"
+          if [ -z "$app_path" ]; then
+            echo "Could not locate the macOS app bundle"
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" target/chorus-macos-aarch64-app.zip
+
+      - name: Upload macOS app bundle
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: chorus-macos-aarch64-app
+          path: target/chorus-macos-aarch64-app.zip
+          if-no-files-found: error
+
+      - name: Upload macOS remote server
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: chorus-remote-server-macos-aarch64
+          path: target/zed-remote-server-macos-aarch64.gz
+          if-no-files-found: error

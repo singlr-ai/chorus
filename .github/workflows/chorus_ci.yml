@@ -1,0 +1,75 @@
+name: Chorus CI
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    branches:
+      - '**'
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chorus-ci-${{ github.ref_name }}-${{ github.ref_name == 'main' && github.sha || 'anysha' }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+  CARGO_INCREMENTAL: '0'
+
+defaults:
+  run:
+    shell: bash -euxo pipefail {0}
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          clean: false
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Validate workflows
+        run: cargo xtask check-workflows
+
+      - name: Check Chorus workspace
+        run: cargo check -p sing_bridge -p sing_dispatch -p sing_orchestrator -p sing_project -p sing_spec -p zed
+
+      - name: Test sing bridge
+        run: cargo test -p sing_bridge
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          clean: false
+
+      - name: Install macOS build dependencies
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          if ! brew list cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+          cargo --version
+
+      - name: Check macOS build
+        run: cargo check -p sing_bridge -p zed

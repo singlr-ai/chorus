@@ -1,7 +1,7 @@
 use gh_workflow::*;
 
 use crate::tasks::workflows::run_bundling::upload_artifact;
-use crate::tasks::workflows::steps::FluentBuilder;
+use crate::tasks::workflows::steps::{CommonJobConditions, FluentBuilder};
 use crate::tasks::workflows::{
     runners,
     steps::{self, NamedJob, named},
@@ -58,6 +58,7 @@ pub fn run_perf(
     named::job(
         Job::default()
             .runs_on(runners::LINUX_DEFAULT)
+            .with_repository_owner_guard()
             .add_step(steps::checkout_repo())
             .add_step(steps::setup_cargo_config(runners::Platform::Linux))
             .map(steps::install_linux_dependencies)

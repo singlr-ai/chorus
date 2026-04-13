@@ -61,3 +61,14 @@
 - Keep `default-members = ["crates/zed"]`
 - Land Chorus feature work in `crates/sing_*` first
 - Treat edits outside the reserved fork touch points as exceptions that need explicit justification
+
+## Git Remotes
+
+- `origin` should point at `singlr-ai/chorus`
+- `upstream` should point at `zed-industries/zed`
+
+## CI and Artifact Builds
+
+- Public GitHub-hosted workflows live alongside upstream Zed workflows
+- Zed-only workflows stay fenced behind repository guards so Chorus does not queue private-runner jobs
+- MBP testing instructions and artifact flow are documented in `docs/chorus/github-actions.md`
