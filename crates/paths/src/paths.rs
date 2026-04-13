@@ -1,4 +1,4 @@
-//! Paths to locations used by Zed.
+//! Paths to locations used by Chorus.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -10,6 +10,11 @@ use util::rel_path::RelPath;
 /// A default editorconfig file name to use when resolving project settings.
 pub const EDITORCONFIG_NAME: &str = ".editorconfig";
 
+const APP_DIR_NAME_LOWER: &str = "chorus";
+const APP_DIR_NAME_TITLE: &str = "Chorus";
+const APP_LOG_FILE_NAME: &str = "Chorus.log";
+const APP_OLD_LOG_FILE_NAME: &str = "Chorus.log.old";
+
 /// A custom data directory override, set only by `set_custom_data_dir`.
 /// This is used to override the default data directory location.
 /// The directory will be created if it doesn't exist when set.
@@ -17,19 +22,19 @@ static CUSTOM_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// The resolved data directory, combining custom override or platform defaults.
 /// This is set once and cached for subsequent calls.
-/// On macOS, this is `~/Library/Application Support/Zed`.
-/// On Linux/FreeBSD, this is `$XDG_DATA_HOME/zed`.
-/// On Windows, this is `%LOCALAPPDATA%\Zed`.
+/// On macOS, this is `~/Library/Application Support/Chorus`.
+/// On Linux/FreeBSD, this is `$XDG_DATA_HOME/chorus`.
+/// On Windows, this is `%LOCALAPPDATA%\Chorus`.
 static CURRENT_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// The resolved config directory, combining custom override or platform defaults.
 /// This is set once and cached for subsequent calls.
-/// On macOS, this is `~/.config/zed`.
-/// On Linux/FreeBSD, this is `$XDG_CONFIG_HOME/zed`.
-/// On Windows, this is `%APPDATA%\Zed`.
+/// On macOS, this is `~/.config/chorus`.
+/// On Linux/FreeBSD, this is `$XDG_CONFIG_HOME/chorus`.
+/// On Windows, this is `%APPDATA%\Chorus`.
 static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-/// Returns the relative path to the zed_server directory on the ssh host.
+/// Returns the relative path to the remote server directory on the SSH host.
 pub fn remote_server_dir_relative() -> &'static RelPath {
     static CACHED: LazyLock<&'static RelPath> =
         LazyLock::new(|| RelPath::unix(".zed_server").unwrap());
@@ -37,7 +42,7 @@ pub fn remote_server_dir_relative() -> &'static RelPath {
 }
 
 // Remove this once 223 goes stable
-/// Returns the relative path to the zed_wsl_server directory on the wsl host.
+/// Returns the relative path to the remote server directory on the WSL host.
 pub fn remote_wsl_server_dir_relative() -> &'static RelPath {
     static CACHED: LazyLock<&'static RelPath> =
         LazyLock::new(|| RelPath::unix(".zed_wsl_server").unwrap());
@@ -76,7 +81,7 @@ pub fn set_custom_data_dir(dir: &str) -> &'static PathBuf {
     })
 }
 
-/// Returns the path to the configuration directory used by Zed.
+/// Returns the path to the configuration directory used by Chorus.
 pub fn config_dir() -> &'static PathBuf {
     CONFIG_DIR.get_or_init(|| {
         if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
@@ -84,38 +89,40 @@ pub fn config_dir() -> &'static PathBuf {
         } else if cfg!(target_os = "windows") {
             dirs::config_dir()
                 .expect("failed to determine RoamingAppData directory")
-                .join("Zed")
+                .join(APP_DIR_NAME_TITLE)
         } else if cfg!(any(target_os = "linux", target_os = "freebsd")) {
             if let Ok(flatpak_xdg_config) = std::env::var("FLATPAK_XDG_CONFIG_HOME") {
                 flatpak_xdg_config.into()
             } else {
                 dirs::config_dir().expect("failed to determine XDG_CONFIG_HOME directory")
             }
-            .join("zed")
+            .join(APP_DIR_NAME_LOWER)
         } else {
-            home_dir().join(".config").join("zed")
+            home_dir().join(".config").join(APP_DIR_NAME_LOWER)
         }
     })
 }
 
-/// Returns the path to the data directory used by Zed.
+/// Returns the path to the data directory used by Chorus.
 pub fn data_dir() -> &'static PathBuf {
     CURRENT_DATA_DIR.get_or_init(|| {
         if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
             custom_dir.clone()
         } else if cfg!(target_os = "macos") {
-            home_dir().join("Library/Application Support/Zed")
+            home_dir()
+                .join("Library/Application Support")
+                .join(APP_DIR_NAME_TITLE)
         } else if cfg!(any(target_os = "linux", target_os = "freebsd")) {
             if let Ok(flatpak_xdg_data) = std::env::var("FLATPAK_XDG_DATA_HOME") {
                 flatpak_xdg_data.into()
             } else {
                 dirs::data_local_dir().expect("failed to determine XDG_DATA_HOME directory")
             }
-            .join("zed")
+            .join(APP_DIR_NAME_LOWER)
         } else if cfg!(target_os = "windows") {
             dirs::data_local_dir()
                 .expect("failed to determine LocalAppData directory")
-                .join("Zed")
+                .join(APP_DIR_NAME_TITLE)
         } else {
             config_dir().clone() // Fallback
         }
@@ -126,7 +133,10 @@ pub fn state_dir() -> &'static PathBuf {
     static STATE_DIR: OnceLock<PathBuf> = OnceLock::new();
     STATE_DIR.get_or_init(|| {
         if cfg!(target_os = "macos") {
-            return home_dir().join(".local").join("state").join("Zed");
+            return home_dir()
+                .join(".local")
+                .join("state")
+                .join(APP_DIR_NAME_TITLE);
         }
 
         if cfg!(any(target_os = "linux", target_os = "freebsd")) {
@@ -135,30 +145,30 @@ pub fn state_dir() -> &'static PathBuf {
             } else {
                 dirs::state_dir().expect("failed to determine XDG_STATE_HOME directory")
             }
-            .join("zed");
+            .join(APP_DIR_NAME_LOWER);
         } else {
             // Windows
             return dirs::data_local_dir()
                 .expect("failed to determine LocalAppData directory")
-                .join("Zed");
+                .join(APP_DIR_NAME_TITLE);
         }
     })
 }
 
-/// Returns the path to the temp directory used by Zed.
+/// Returns the path to the temp directory used by Chorus.
 pub fn temp_dir() -> &'static PathBuf {
     static TEMP_DIR: OnceLock<PathBuf> = OnceLock::new();
     TEMP_DIR.get_or_init(|| {
         if cfg!(target_os = "macos") {
             return dirs::cache_dir()
                 .expect("failed to determine cachesDirectory directory")
-                .join("Zed");
+                .join(APP_DIR_NAME_TITLE);
         }
 
         if cfg!(target_os = "windows") {
             return dirs::cache_dir()
                 .expect("failed to determine LocalAppData directory")
-                .join("Zed");
+                .join(APP_DIR_NAME_TITLE);
         }
 
         if cfg!(any(target_os = "linux", target_os = "freebsd")) {
@@ -167,10 +177,10 @@ pub fn temp_dir() -> &'static PathBuf {
             } else {
                 dirs::cache_dir().expect("failed to determine XDG_CACHE_HOME directory")
             }
-            .join("zed");
+            .join(APP_DIR_NAME_LOWER);
         }
 
-        home_dir().join(".cache").join("zed")
+        home_dir().join(".cache").join(APP_DIR_NAME_LOWER)
     })
 }
 
@@ -185,29 +195,29 @@ pub fn logs_dir() -> &'static PathBuf {
     static LOGS_DIR: OnceLock<PathBuf> = OnceLock::new();
     LOGS_DIR.get_or_init(|| {
         if cfg!(target_os = "macos") {
-            home_dir().join("Library/Logs/Zed")
+            home_dir().join("Library/Logs").join(APP_DIR_NAME_TITLE)
         } else {
             data_dir().join("logs")
         }
     })
 }
 
-/// Returns the path to the Zed server directory on this SSH host.
+/// Returns the path to the remote server state directory on this host.
 pub fn remote_server_state_dir() -> &'static PathBuf {
     static REMOTE_SERVER_STATE: OnceLock<PathBuf> = OnceLock::new();
     REMOTE_SERVER_STATE.get_or_init(|| data_dir().join("server_state"))
 }
 
-/// Returns the path to the `Zed.log` file.
+/// Returns the path to the `Chorus.log` file.
 pub fn log_file() -> &'static PathBuf {
     static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
-    LOG_FILE.get_or_init(|| logs_dir().join("Zed.log"))
+    LOG_FILE.get_or_init(|| logs_dir().join(APP_LOG_FILE_NAME))
 }
 
-/// Returns the path to the `Zed.log.old` file.
+/// Returns the path to the `Chorus.log.old` file.
 pub fn old_log_file() -> &'static PathBuf {
     static OLD_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
-    OLD_LOG_FILE.get_or_init(|| logs_dir().join("Zed.log.old"))
+    OLD_LOG_FILE.get_or_init(|| logs_dir().join(APP_OLD_LOG_FILE_NAME))
 }
 
 /// Returns the path to the database directory.
@@ -479,6 +489,11 @@ pub fn global_ssh_config_file() -> Option<&'static Path> {
     }
 }
 
+/// Returns the Unix socket file name used for local CLI handoff.
+pub fn cli_socket_file_name(release_channel: &str) -> String {
+    format!("{APP_DIR_NAME_LOWER}-{release_channel}.sock")
+}
+
 /// Returns candidate paths for the vscode user settings file
 pub fn vscode_settings_file_paths() -> Vec<PathBuf> {
     let mut paths = vscode_user_data_paths();
@@ -564,4 +579,14 @@ pub fn global_gitignore_path() -> Option<PathBuf> {
     GLOBAL_GITIGNORE_PATH
         .get_or_init(::ignore::gitignore::gitconfig_excludes_path)
         .clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cli_socket_file_name;
+
+    #[test]
+    fn cli_socket_file_name_uses_chorus_prefix() {
+        assert_eq!(cli_socket_file_name("stable"), "chorus-stable.sock");
+    }
 }

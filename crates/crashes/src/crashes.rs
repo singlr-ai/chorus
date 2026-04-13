@@ -110,7 +110,7 @@ pub fn init(crash_init: InitCrashHandler, spawn: impl FnOnce(BoxFuture<'static, 
 async fn connect_and_keepalive(crash_init: InitCrashHandler, handler: CrashHandler) {
     let exe = env::current_exe().expect("unable to find ourselves");
     let zed_pid = process::id();
-    let socket_name = paths::temp_dir().join(format!("zed-crash-handler-{zed_pid}"));
+    let socket_name = paths::temp_dir().join(format!("chorus-crash-handler-{zed_pid}"));
     #[cfg(not(target_os = "windows"))]
     let _crash_handler = Command::new(exe)
         .arg("--crash-handler")

@@ -13,6 +13,7 @@ use gpui::{
 };
 use gpui::{WeakEntity, linear_color_stop, linear_gradient};
 use menu::{SelectNext, SelectPrevious};
+use release_channel::ReleaseChannel;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -457,9 +458,12 @@ impl Render for WelcomePage {
         };
 
         let welcome_label = if self.fallback_to_recent_projects {
-            "Welcome back to Zed"
+            format!(
+                "Welcome back to {}",
+                ReleaseChannel::global(cx).display_name()
+            )
         } else {
-            "Welcome to Zed"
+            format!("Welcome to {}", ReleaseChannel::global(cx).display_name())
         };
 
         h_flex()
@@ -489,7 +493,7 @@ impl Render for WelcomePage {
                             .child(Vector::square(VectorName::ZedLogo, rems_from_px(45.)))
                             .child(
                                 v_flex().child(Headline::new(welcome_label)).child(
-                                    Label::new("The editor for what's next")
+                                    Label::new("The native orchestration IDE for sing")
                                         .size(LabelSize::Small)
                                         .color(Color::Muted)
                                         .italic(),

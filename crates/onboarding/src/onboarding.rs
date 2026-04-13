@@ -8,6 +8,7 @@ use gpui::{
     Subscription, Task, WeakEntity, Window, actions,
 };
 use notifications::status_toast::{StatusToast, ToastIcon};
+use release_channel::{DOCUMENTATION_URL, ReleaseChannel};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use settings::{SettingsStore, VsCodeSettingsSource};
@@ -52,7 +53,7 @@ pub struct ImportCursorSettings {
 }
 
 pub const FIRST_OPEN: &str = "first_open";
-pub const DOCS_URL: &str = "https://zed.dev/docs/";
+pub const DOCS_URL: &str = DOCUMENTATION_URL;
 
 actions!(
     onboarding,
@@ -315,14 +316,20 @@ impl Render for Onboarding {
                                             .child(
                                                 v_flex()
                                                     .child(
-                                                        Headline::new("Welcome to Zed")
-                                                            .size(HeadlineSize::Small),
+                                                        Headline::new(format!(
+                                                            "Welcome to {}",
+                                                            ReleaseChannel::global(cx)
+                                                                .display_name()
+                                                        ))
+                                                        .size(HeadlineSize::Small),
                                                     )
                                                     .child(
-                                                        Label::new("The editor for what's next")
-                                                            .color(Color::Muted)
-                                                            .size(LabelSize::Small)
-                                                            .italic(),
+                                                        Label::new(
+                                                            "The native orchestration IDE for sing",
+                                                        )
+                                                        .color(Color::Muted)
+                                                        .size(LabelSize::Small)
+                                                        .italic(),
                                                     ),
                                             ),
                                     )
