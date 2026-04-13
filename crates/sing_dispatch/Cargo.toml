@@ -1,0 +1,12 @@
+[package]
+name = "sing_dispatch"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-or-later"
+
+[lib]
+path = "src/sing_dispatch.rs"
+
+[lints]
+workspace = true

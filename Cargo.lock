@@ -16152,6 +16152,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sing_bridge"
+version = "0.1.0"
+
+[[package]]
+name = "sing_dispatch"
+version = "0.1.0"
+
+[[package]]
+name = "sing_orchestrator"
+version = "0.1.0"
+
+[[package]]
+name = "sing_project"
+version = "0.1.0"
+
+[[package]]
+name = "sing_spec"
+version = "0.1.0"
+
+[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
