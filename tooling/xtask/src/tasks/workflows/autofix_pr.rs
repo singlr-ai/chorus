@@ -2,7 +2,10 @@ use gh_workflow::*;
 
 use crate::tasks::workflows::{
     runners,
-    steps::{self, FluentBuilder, NamedJob, RepositoryTarget, TokenPermissions, named},
+    steps::{
+        self, CommonJobConditions, FluentBuilder, NamedJob, RepositoryTarget,
+        TokenPermissions, named,
+    },
     vars::{self, StepOutput, WorkflowInput},
 };
 
@@ -109,6 +112,7 @@ fn run_autofix(pr_number: &WorkflowInput, run_clippy: &WorkflowInput) -> NamedJo
     named::job(
         Job::default()
             .runs_on(runners::LINUX_DEFAULT)
+            .with_repository_owner_guard()
             .outputs([(
                 "has_changes".to_owned(),
                 "${{ steps.create-patch.outputs.has_changes }}".to_owned(),
@@ -171,6 +175,7 @@ fn commit_changes(pr_number: &WorkflowInput, autofix_job: &NamedJob) -> NamedJob
     named::job(
         Job::default()
             .runs_on(runners::LINUX_SMALL)
+            .with_repository_owner_guard()
             .needs(vec![autofix_job.name.clone()])
             .cond(Expression::new(format!(
                 "needs.{}.outputs.has_changes == 'true'",

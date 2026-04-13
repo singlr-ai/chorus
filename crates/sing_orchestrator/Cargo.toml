@@ -1,0 +1,12 @@
+[package]
+name = "sing_orchestrator"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-or-later"
+
+[lib]
+path = "src/sing_orchestrator.rs"
+
+[lints]
+workspace = true

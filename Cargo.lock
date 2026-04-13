@@ -16152,6 +16152,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "sing_bridge"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures 0.3.32",
+ "indexmap",
+ "log",
+ "pretty_assertions",
+ "remote",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "smol",
+ "tempfile",
+ "thiserror 2.0.17",
+ "util",
+]
+
+[[package]]
+name = "sing_dispatch"
+version = "0.1.0"
+
+[[package]]
+name = "sing_orchestrator"
+version = "0.1.0"
+
+[[package]]
+name = "sing_project"
+version = "0.1.0"
+
+[[package]]
+name = "sing_spec"
+version = "0.1.0"
+
+[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
