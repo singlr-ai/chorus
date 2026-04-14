@@ -335,5 +335,6 @@ cp target/${target_triple}/${target_dir}/chorus "${app_path}/Contents/MacOS/chor
 cp target/${target_triple}/${target_dir}/cli "${app_path}/Contents/MacOS/cli"
 sign_app_binaries
 
-sign_binary "target/$target_triple/release/remote_server"
-gzip -f --stdout --best target/$target_triple/release/remote_server > target/zed-remote-server-macos-$arch_suffix.gz
+remote_server_path="target/${target_triple}/${target_dir}/remote_server"
+sign_binary "${remote_server_path}"
+gzip -f --stdout --best "${remote_server_path}" > "target/chorus-remote-server-macos-${arch_suffix}.gz"
