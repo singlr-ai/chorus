@@ -8,5 +8,19 @@ license = "GPL-3.0-or-later"
 [lib]
 path = "src/sing_project.rs"
 
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+db.workspace = true
+futures.workspace = true
+gpui.workspace = true
+recent_projects.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sing_bridge.workspace = true
+ui.workspace = true
+util.workspace = true
+workspace.workspace = true
+
 [lints]
 workspace = true
