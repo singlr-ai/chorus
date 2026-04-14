@@ -8,6 +8,7 @@ target_dir="release"
 open_result=false
 local_install=false
 can_code_sign=false
+app_only=false
 
 # This must match the team in the provisioning profile.
 IDENTITY="Zed Industries, Inc."
@@ -20,6 +21,7 @@ Usage: ${0##*/} [options] [architecture=host]
 Build the application bundle for macOS.
 
 Options:
+  -a    Build a release app bundle without creating a DMG.
   -d    Compile in debug mode
   -o    Open dir with the resulting DMG or launch the app itself in local mode.
   -i    Install the resulting DMG into /Applications.
@@ -27,9 +29,10 @@ Options:
   "
 }
 
-while getopts 'dloih' flag
+while getopts 'adloih' flag
 do
     case "${flag}" in
+        a) app_only=true;;
         o) open_result=true;;
         d)
             export CARGO_INCREMENTAL=true
@@ -236,8 +239,12 @@ function sign_app_binaries() {
         open "$app_path"
     fi
 
-    if [[ "$target_dir" = "debug" ]]; then
-        echo "Debug build detected - skipping DMG creation and signing"
+    if [[ "$target_dir" = "debug" || "$app_only" = true ]]; then
+        if [[ "$target_dir" = "debug" ]]; then
+            echo "Debug build detected - skipping DMG creation and signing"
+        else
+            echo "App-only build detected - skipping DMG creation"
+        fi
         if [ "$local_install" = false ]; then
             echo "Created application bundle:"
             echo "$app_path"
