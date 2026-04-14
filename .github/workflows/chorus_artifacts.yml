@@ -50,13 +50,6 @@ jobs:
           path: target/release/chorus-linux-x86_64.tar.gz
           if-no-files-found: error
 
-      - name: Upload Linux remote server
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
-        with:
-          name: chorus-remote-server-linux-x86_64
-          path: target/chorus-remote-server-linux-x86_64.gz
-          if-no-files-found: error
-
   macos_bundle:
     if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') || (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
     runs-on: macos-15
@@ -86,11 +79,11 @@ jobs:
           echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=$sdk_root" >> "$GITHUB_ENV"
 
       - name: Build macOS app bundle
-        run: ./script/bundle-mac -d aarch64-apple-darwin
+        run: ./script/bundle-mac -a aarch64-apple-darwin
 
       - name: Archive macOS app bundle
         run: |
-          app_path="$(find target -type d -path '*/debug/bundle/osx/*.app' -print -quit)"
+          app_path="$(find target -type d -path '*/release/bundle/osx/*.app' -print -quit)"
           if [ -z "$app_path" ]; then
             echo "Could not locate the macOS app bundle"
             exit 1
@@ -102,11 +95,4 @@ jobs:
         with:
           name: chorus-macos-aarch64-app
           path: target/chorus-macos-aarch64-app.zip
-          if-no-files-found: error
-
-      - name: Upload macOS remote server
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
-        with:
-          name: chorus-remote-server-macos-aarch64
-          path: target/chorus-remote-server-macos-aarch64.gz
           if-no-files-found: error

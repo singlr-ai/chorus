@@ -32,10 +32,10 @@
 3. Run it against the branch you want to test, or label the PR with `build-artifacts`
 4. Download the `chorus-macos-aarch64-app` artifact
 5. Unzip it on the MacBook Pro
-6. Launch `Zed.app`
+6. Launch `Chorus Dev.app`
 
 ## Current Limits
 
-- The macOS artifact is an unsigned debug app bundle
+- The macOS artifact is an unsigned release app bundle
 - Gatekeeper may require removing the quarantine attribute before launch
-- The app bundle is still named `Zed.app` until the Chorus branding spec lands
+- The artifact is intended for local testing, not distribution
