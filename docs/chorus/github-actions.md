@@ -14,10 +14,10 @@
   - Runs `cargo test -p sing_bridge`
 
 - `Chorus Artifacts`
-  - Runs on pushes to `main`
   - Runs manually through `workflow_dispatch`
+  - Manual dispatch can build `all`, `macos`, or `linux`
   - Runs for pull requests labeled `build-artifacts`
-  - Uploads a Linux bundle and an Apple Silicon macOS app bundle
+  - Uploads only the Chorus app bundles needed for local testing
 
 ## Disabled Upstream Workflows
 
@@ -29,7 +29,7 @@
 
 1. Push your branch to `origin`
 2. Open the `Chorus Artifacts` workflow in GitHub Actions
-3. Run it against the branch you want to test, or label the PR with `build-artifacts`
+3. Run it against the branch you want to test with `platform=macos`, or label the PR with `build-artifacts`
 4. Download the `chorus-macos-aarch64-app` artifact
 5. Unzip it on the MacBook Pro
 6. Launch `Chorus Dev.app`

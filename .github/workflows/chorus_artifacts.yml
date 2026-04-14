@@ -1,20 +1,26 @@
 name: Chorus Artifacts
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform artifact set to build
+        type: choice
+        options:
+          - all
+          - macos
+          - linux
+        default: all
   pull_request:
     types:
       - labeled
       - synchronize
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: chorus-artifacts-${{ github.event.pull_request.number || github.ref_name }}
+  group: chorus-artifacts-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -28,9 +34,14 @@ defaults:
 
 jobs:
   linux_bundle:
-    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') || (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) ||
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') ||
+        (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+      ))
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -40,8 +51,11 @@ jobs:
       - name: Install Linux dependencies
         run: ./script/linux
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
       - name: Build Linux bundle
-        run: ./script/bundle-linux
+        run: ./script/bundle-linux --app-only
 
       - name: Upload Linux bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
@@ -51,9 +65,14 @@ jobs:
           if-no-files-found: error
 
   macos_bundle:
-    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') || (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) ||
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') ||
+        (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+      ))
     runs-on: macos-15
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -77,6 +96,9 @@ jobs:
           sdk_root="$(xcrun --sdk macosx --show-sdk-path)"
           echo "SDKROOT=$sdk_root" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=$sdk_root" >> "$GITHUB_ENV"
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
 
       - name: Build macOS app bundle
         run: ./script/bundle-mac -a aarch64-apple-darwin
