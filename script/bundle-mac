@@ -91,9 +91,11 @@ rustup target add $target_triple
 
 echo "Compiling Chorus binaries"
 cargo build ${build_flag} --package zed --package cli --target $target_triple
-# Build remote_server in separate invocation to prevent feature unification from other crates
-# from influencing dynamic libraries required by it.
-cargo build ${build_flag} --package remote_server --target $target_triple
+if [ "$app_only" = false ]; then
+    # Build remote_server in separate invocation to prevent feature unification from other crates
+    # from influencing dynamic libraries required by it.
+    cargo build ${build_flag} --package remote_server --target $target_triple
+fi
 
 echo "Creating application bundle"
 pushd crates/zed
@@ -309,10 +311,14 @@ function upload_debug_symbols() {
             cat target/dsymutil.log
             exit 1
         fi
-        if ! dsymutil --flat "target/${target_triple}/${target_dir}/remote_server" 2> target/dsymutil.log; then
-            echo "dsymutil failed"
-            cat target/dsymutil.log
-            exit 1
+        sentry_files=("target/${target_triple}/${target_dir}/chorus.dwarf")
+        if [ "$app_only" = false ]; then
+            if ! dsymutil --flat "target/${target_triple}/${target_dir}/remote_server" 2> target/dsymutil.log; then
+                echo "dsymutil failed"
+                cat target/dsymutil.log
+                exit 1
+            fi
+            sentry_files+=("target/${target_triple}/${target_dir}/remote_server.dwarf")
         fi
         # note: this uploads the unstripped binary which is needed because it contains
         # .eh_frame data for stack unwinding. see https://github.com/getsentry/symbolic/issues/783
@@ -320,8 +326,7 @@ function upload_debug_symbols() {
         for attempt in 1 2 3; do
             echo "Sentry upload attempt $attempt..."
             if sentry-cli debug-files upload --include-sources --wait -p zed -o zed-dev \
-                "target/${target_triple}/${target_dir}/chorus.dwarf" \
-                "target/${target_triple}/${target_dir}/remote_server.dwarf"; then
+                "${sentry_files[@]}"; then
                 break
             else
                 echo "Sentry upload failed on attempt $attempt"
@@ -342,6 +347,8 @@ cp target/${target_triple}/${target_dir}/chorus "${app_path}/Contents/MacOS/chor
 cp target/${target_triple}/${target_dir}/cli "${app_path}/Contents/MacOS/cli"
 sign_app_binaries
 
-remote_server_path="target/${target_triple}/${target_dir}/remote_server"
-sign_binary "${remote_server_path}"
-gzip -f --stdout --best "${remote_server_path}" > "target/chorus-remote-server-macos-${arch_suffix}.gz"
+if [ "$app_only" = false ]; then
+    remote_server_path="target/${target_triple}/${target_dir}/remote_server"
+    sign_binary "${remote_server_path}"
+    gzip -f --stdout --best "${remote_server_path}" > "target/chorus-remote-server-macos-${arch_suffix}.gz"
+fi

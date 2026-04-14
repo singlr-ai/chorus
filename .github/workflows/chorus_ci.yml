@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: chorus-ci-${{ github.ref_name }}-${{ github.ref_name == 'main' && github.sha || 'anysha' }}
+  group: chorus-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -37,6 +37,9 @@ jobs:
 
       - name: Install Linux dependencies
         run: ./script/linux
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -76,6 +79,9 @@ jobs:
           sdk_root="$(xcrun --sdk macosx --show-sdk-path)"
           echo "SDKROOT=$sdk_root" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=$sdk_root" >> "$GITHUB_ENV"
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
 
       - name: Check macOS build
         run: cargo check -p sing_bridge -p zed
