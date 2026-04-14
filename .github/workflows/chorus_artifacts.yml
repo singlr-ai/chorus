@@ -47,14 +47,14 @@ jobs:
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: chorus-linux-x86_64
-          path: target/release/zed-linux-x86_64.tar.gz
+          path: target/release/chorus-linux-x86_64.tar.gz
           if-no-files-found: error
 
       - name: Upload Linux remote server
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: chorus-remote-server-linux-x86_64
-          path: target/zed-remote-server-linux-x86_64.gz
+          path: target/chorus-remote-server-linux-x86_64.gz
           if-no-files-found: error
 
   macos_bundle:
