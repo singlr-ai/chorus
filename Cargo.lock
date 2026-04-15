@@ -16201,6 +16201,18 @@ dependencies = [
 [[package]]
 name = "sing_spec"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures 0.3.32",
+ "pretty_assertions",
+ "remote",
+ "serde_yaml",
+ "sing_bridge",
+ "smol",
+ "tempfile",
+ "util",
+]
 
 [[package]]
 name = "siphasher"

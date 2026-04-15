@@ -8,5 +8,19 @@ license = "GPL-3.0-or-later"
 [lib]
 path = "src/sing_spec.rs"
 
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+remote.workspace = true
+serde_yaml = "0.9.34"
+sing_bridge.workspace = true
+smol.workspace = true
+tempfile.workspace = true
+util.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+
 [lints]
 workspace = true
