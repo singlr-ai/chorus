@@ -196,14 +196,12 @@ pub async fn load_project_rows(client: Arc<dyn SingProjectClient>) -> Result<Vec
 }
 
 pub fn next_selection(previous: Option<&str>, projects: &[ProjectRow]) -> Option<String> {
-    previous
-        .and_then(|selected| {
-            projects
-                .iter()
-                .find(|project| project.name == selected)
-                .map(|project| project.name.clone())
-        })
-        .or_else(|| projects.first().map(|project| project.name.clone()))
+    previous.and_then(|selected| {
+        projects
+            .iter()
+            .find(|project| project.name == selected)
+            .map(|project| project.name.clone())
+    })
 }
 
 #[cfg(test)]
@@ -349,11 +347,8 @@ mod tests {
             next_selection(Some("beta"), &projects).as_deref(),
             Some("beta")
         );
-        assert_eq!(
-            next_selection(Some("missing"), &projects).as_deref(),
-            Some("alpha")
-        );
-        assert_eq!(next_selection(None, &projects).as_deref(), Some("alpha"));
+        assert_eq!(next_selection(Some("missing"), &projects).as_deref(), None);
+        assert_eq!(next_selection(None, &projects).as_deref(), None);
     }
 
     fn project_config(name: &str, status: ProjectStatus) -> ProjectConfig {
