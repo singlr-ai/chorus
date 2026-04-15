@@ -64,14 +64,48 @@ jobs:
           path: target/release/chorus-linux-x86_64.tar.gz
           if-no-files-found: error
 
-  macos_bundle:
+  linux_remote_server_archive:
     if: |
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) ||
       (github.event_name == 'pull_request' && (
         (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') ||
         (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
       ))
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          clean: false
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Linux remote server archive
+        run: |
+          cargo build --release --target x86_64-unknown-linux-gnu --package remote_server
+          gzip -f --stdout --best target/x86_64-unknown-linux-gnu/release/remote_server > target/chorus-remote-server-linux-x86_64.gz
+
+      - name: Upload Linux remote server archive
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: chorus-remote-server-linux-x86_64
+          path: target/chorus-remote-server-linux-x86_64.gz
+          if-no-files-found: error
+
+  macos_bundle:
+    needs: linux_remote_server_archive
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) ||
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'labeled' && github.event.label.name == 'build-artifacts') ||
+        (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'build-artifacts'))
+      ))
+    runs-on: macos-15-large
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -106,7 +140,15 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
+      - name: Download Linux remote server archive
+        uses: actions/download-artifact@v4
+        with:
+          name: chorus-remote-server-linux-x86_64
+          path: target/remote-servers-prebuilt
+
       - name: Build macOS app bundle
+        env:
+          CHORUS_PREBUILT_REMOTE_SERVER_ARCHIVES_DIR: target/remote-servers-prebuilt
         run: ./script/bundle-mac -a aarch64-apple-darwin
 
       - name: Archive macOS app bundle

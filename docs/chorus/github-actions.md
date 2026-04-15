@@ -18,6 +18,7 @@
   - Manual dispatch can build `all`, `macos`, or `linux`
   - Runs for pull requests labeled `build-artifacts`
   - Uploads only the Chorus app bundles needed for local testing
+  - Builds the Linux remote server archive on Ubuntu and injects it into the macOS app bundle so packaged remote development works without macOS cross-compilation
 
 ## Disabled Upstream Workflows
 

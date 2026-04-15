@@ -75,6 +75,7 @@ if [[ $# -gt 0 && -n "$1" ]]; then
 fi
 arch_suffix=""
 remote_server_bundle_dir="target/remote-servers"
+prebuilt_remote_server_archives_dir="${CHORUS_PREBUILT_REMOTE_SERVER_ARCHIVES_DIR:-${ZED_PREBUILT_REMOTE_SERVER_ARCHIVES_DIR:-}}"
 
 if [[ "$target_triple" = "x86_64-apple-darwin" ]]; then
     arch_suffix="x86_64"
@@ -231,6 +232,25 @@ function prepare_remote_server_archives() {
     rm -rf "${remote_server_bundle_dir}"
     mkdir -p "${remote_server_bundle_dir}"
 
+    if [[ -n "${prebuilt_remote_server_archives_dir}" ]]; then
+        if [[ ! -d "${prebuilt_remote_server_archives_dir}" ]]; then
+            echo "Prebuilt remote server archive directory not found: ${prebuilt_remote_server_archives_dir}"
+            exit 1
+        fi
+
+        shopt -s nullglob
+        archives=("${prebuilt_remote_server_archives_dir}"/*)
+        shopt -u nullglob
+
+        if [[ ${#archives[@]} -eq 0 ]]; then
+            echo "No prebuilt remote server archives found in ${prebuilt_remote_server_archives_dir}"
+            exit 1
+        fi
+
+        cp "${archives[@]}" "${remote_server_bundle_dir}/"
+        return
+    fi
+
     build_remote_server_archive "x86_64-unknown-linux-gnu" "linux" "x86_64"
 }
 
@@ -240,7 +260,7 @@ function copy_remote_server_archives_into_app() {
     fi
 
     shopt -s nullglob
-    archives=("${remote_server_bundle_dir}"/*.gz)
+    archives=("${remote_server_bundle_dir}"/*)
     shopt -u nullglob
     if [[ ${#archives[@]} -eq 0 ]]; then
         return
