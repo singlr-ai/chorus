@@ -2,7 +2,7 @@ name: chorus
 title: Chorus
 base: core24
 version: "$RELEASE_VERSION"
-summary: The native orchestration IDE for sing
+summary: The integrated agent environment
 description: |
   Chorus is a modern open-source code editor forked from Zed and shaped around
   sing-native orchestration workflows, SSH development, and external agents.

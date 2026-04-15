@@ -5,7 +5,7 @@
     <project_license>AGPL-3.0-or-later and Apache-2.0 and GPL-3.0-or-later</project_license>
 
     <name>$APP_NAME</name>
-    <summary>The native orchestration IDE for sing</summary>
+    <summary>The integrated agent environment</summary>
     <developer id="ai.singlr">
         <name translate="no">Singlr AI</name>
     </developer>

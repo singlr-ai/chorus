@@ -27,7 +27,7 @@ use rpc::proto::Envelope;
 use crate::{
     RemoteClientDelegate, RemoteConnection, RemoteConnectionOptions, RemoteOs, RemotePlatform,
     remote_client::{CommandTemplate, Interactive},
-    transport::parse_platform,
+    transport::{packaged_remote_server_path, parse_platform},
 };
 
 #[derive(
@@ -193,12 +193,20 @@ impl DockerExecConnection {
             _ => version.to_string(),
         };
         let binary_name = format!(
+            "chorus-remote-server-{}-{}",
+            release_channel.dev_name(),
+            version_str
+        );
+        let legacy_binary_name = format!(
             "zed-remote-server-{}-{}",
             release_channel.dev_name(),
             version_str
         );
         let dst_path =
             paths::remote_server_dir_relative().join(RelPath::unix(&binary_name).unwrap());
+        let legacy_dst_path = RelPath::unix(".zed_server")
+            .unwrap()
+            .join(RelPath::unix(&legacy_binary_name).unwrap());
 
         let binary_exists_on_server = self
             .run_docker_exec(
@@ -209,6 +217,43 @@ impl DockerExecConnection {
             )
             .await
             .is_ok();
+
+        if !binary_exists_on_server
+            && self
+                .run_docker_exec(
+                    &legacy_dst_path.display(self.path_style()),
+                    Some(&remote_dir_for_server),
+                    &Default::default(),
+                    &["version"],
+                )
+                .await
+                .is_ok()
+        {
+            return Ok(legacy_dst_path);
+        }
+
+        if let Some(remote_server_path) = packaged_remote_server_path(remote_platform) {
+            let tmp_path = paths::remote_server_dir_relative().join(
+                RelPath::unix(&format!(
+                    "download-{}-{}",
+                    std::process::id(),
+                    remote_server_path.file_name().unwrap().to_string_lossy()
+                ))
+                .unwrap(),
+            );
+            self.upload_local_server_binary(
+                &remote_server_path,
+                &tmp_path,
+                &remote_dir_for_server,
+                delegate,
+                cx,
+            )
+            .await?;
+            self.extract_server_binary(&dst_path, &tmp_path, &remote_dir_for_server, delegate, cx)
+                .await?;
+            return Ok(dst_path);
+        }
+
         #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
         if let Some(remote_server_path) = super::build_remote_server_from_source(
             &remote_platform,
@@ -247,7 +292,7 @@ impl DockerExecConnection {
             ReleaseChannel::Nightly => Ok(None),
             ReleaseChannel::Dev => {
                 anyhow::bail!(
-                    "ZED_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
+                    "CHORUS_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
                     dst_path
                 )
             }

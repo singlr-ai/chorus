@@ -1,4 +1,7 @@
-use std::io::Write;
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     RemoteArch, RemoteOs, RemotePlatform,
@@ -11,7 +14,9 @@ use futures::{
     channel::mpsc::{Sender, UnboundedReceiver, UnboundedSender},
 };
 use gpui::{AppContext as _, AsyncApp, Task};
+use release_channel::ReleaseChannel;
 use rpc::proto::Envelope;
+use semver::Version;
 use util::command::Child;
 
 pub mod docker;
@@ -181,6 +186,101 @@ fn handle_rpc_messages_over_child_process_stdio(
     })
 }
 
+pub(crate) fn remote_server_binary_name(
+    release_channel: ReleaseChannel,
+    version: &Version,
+) -> String {
+    let version_str = match release_channel {
+        ReleaseChannel::Dev => "build".to_string(),
+        _ => version.to_string(),
+    };
+    format!(
+        "chorus-remote-server-{}-{version_str}",
+        release_channel.dev_name()
+    )
+}
+
+pub(crate) fn legacy_remote_server_binary_name(
+    release_channel: ReleaseChannel,
+    version: &Version,
+) -> String {
+    let version_str = match release_channel {
+        ReleaseChannel::Dev => "build".to_string(),
+        _ => version.to_string(),
+    };
+    format!(
+        "zed-remote-server-{}-{version_str}",
+        release_channel.dev_name()
+    )
+}
+
+pub(crate) fn copy_remote_server_override() -> Option<PathBuf> {
+    std::env::var("CHORUS_COPY_REMOTE_SERVER")
+        .or_else(|_| std::env::var("ZED_COPY_REMOTE_SERVER"))
+        .ok()
+        .map(PathBuf::from)
+}
+
+pub(crate) fn build_remote_server_mode() -> String {
+    std::env::var("CHORUS_BUILD_REMOTE_SERVER")
+        .or_else(|_| std::env::var("ZED_BUILD_REMOTE_SERVER"))
+        .unwrap_or_else(|_| "nocompress".into())
+}
+
+fn zstd_musl_lib_dir() -> Option<String> {
+    std::env::var("CHORUS_ZSTD_MUSL_LIB")
+        .or_else(|_| std::env::var("ZED_ZSTD_MUSL_LIB"))
+        .ok()
+}
+
+pub(crate) fn packaged_remote_server_path(platform: RemotePlatform) -> Option<PathBuf> {
+    let current_exe = std::env::current_exe().ok()?;
+    let current_dir = current_exe.parent()?;
+    let archive_name = bundled_remote_server_archive_name(platform);
+    packaged_remote_server_locations(current_dir, &archive_name)
+        .into_iter()
+        .find(|candidate| candidate.exists())
+}
+
+fn bundled_remote_server_archive_name(platform: RemotePlatform) -> String {
+    let extension = if platform.os.is_windows() {
+        "zip"
+    } else {
+        "gz"
+    };
+    format!(
+        "chorus-remote-server-{}-{}.{}",
+        platform.os.as_str(),
+        platform.arch.as_str(),
+        extension
+    )
+}
+
+fn packaged_remote_server_locations(current_dir: &Path, archive_name: &str) -> Vec<PathBuf> {
+    let mut locations = Vec::new();
+
+    if cfg!(target_os = "macos") {
+        locations.push(
+            current_dir
+                .join("../Resources/remote-servers")
+                .join(archive_name),
+        );
+        locations.push(current_dir.join("remote-servers").join(archive_name));
+    } else if cfg!(any(target_os = "linux", target_os = "freebsd")) {
+        locations.push(
+            current_dir
+                .join("../libexec/remote-servers")
+                .join(archive_name),
+        );
+        locations.push(current_dir.join("remote-servers").join(archive_name));
+    } else if cfg!(target_os = "windows") {
+        locations.push(current_dir.join("remote-servers").join(archive_name));
+    }
+
+    locations.push(current_dir.join(archive_name));
+    locations
+}
+
 #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
 async fn build_remote_server_from_source(
     platform: &crate::RemotePlatform,
@@ -192,13 +292,12 @@ async fn build_remote_server_from_source(
     use std::path::Path;
     use util::command::{Command, Stdio, new_command};
 
-    if let Ok(path) = std::env::var("ZED_COPY_REMOTE_SERVER") {
-        let path = std::path::PathBuf::from(path);
+    if let Some(path) = copy_remote_server_override() {
         if path.exists() {
             return Ok(Some(path));
         } else {
             log::warn!(
-                "ZED_COPY_REMOTE_SERVER path does not exist, falling back to ZED_BUILD_REMOTE_SERVER: {}",
+                "CHORUS_COPY_REMOTE_SERVER path does not exist, falling back to CHORUS_BUILD_REMOTE_SERVER: {}",
                 path.display()
             );
         }
@@ -206,8 +305,7 @@ async fn build_remote_server_from_source(
 
     // By default, we make building remote server from source opt-out and we do not force artifact compression
     // for quicker builds.
-    let build_remote_server =
-        std::env::var("ZED_BUILD_REMOTE_SERVER").unwrap_or("nocompress".into());
+    let build_remote_server = build_remote_server_mode();
 
     if let "never" = &*build_remote_server {
         return Ok(None);
@@ -215,7 +313,9 @@ async fn build_remote_server_from_source(
         if binary_exists_on_server {
             return Ok(None);
         }
-        log::warn!("ZED_BUILD_REMOTE_SERVER is disabled, but no server binary exists on the server")
+        log::warn!(
+            "CHORUS_BUILD_REMOTE_SERVER is disabled, but no server binary exists on the server"
+        )
     }
 
     async fn run_cmd(command: &mut Command) -> Result<()> {
@@ -259,7 +359,7 @@ async fn build_remote_server_from_source(
     if platform.os == RemoteOs::Linux && use_musl {
         rust_flags.push_str(" -C target-feature=+crt-static");
 
-        if let Ok(path) = std::env::var("ZED_ZSTD_MUSL_LIB") {
+        if let Some(path) = zstd_musl_lib_dir() {
             rust_flags.push_str(&format!(" -C link-arg=-L{path}"));
         }
     }
@@ -397,6 +497,7 @@ async fn which(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn test_parse_platform() {
@@ -460,5 +561,81 @@ mod tests {
         );
         assert_eq!(parse_shell("", "sh"), "sh");
         assert_eq!(parse_shell("\n", "sh"), "sh");
+    }
+
+    #[test]
+    fn test_remote_server_binary_names() {
+        let version = Version::new(0, 233, 0);
+
+        assert_eq!(
+            remote_server_binary_name(ReleaseChannel::Dev, &version),
+            "chorus-remote-server-dev-build"
+        );
+        assert_eq!(
+            remote_server_binary_name(ReleaseChannel::Stable, &version),
+            "chorus-remote-server-stable-0.233.0"
+        );
+        assert_eq!(
+            legacy_remote_server_binary_name(ReleaseChannel::Dev, &version),
+            "zed-remote-server-dev-build"
+        );
+    }
+
+    #[test]
+    fn test_bundled_remote_server_archive_names() {
+        assert_eq!(
+            bundled_remote_server_archive_name(RemotePlatform {
+                os: RemoteOs::Linux,
+                arch: RemoteArch::X86_64,
+            }),
+            "chorus-remote-server-linux-x86_64.gz"
+        );
+        assert_eq!(
+            bundled_remote_server_archive_name(RemotePlatform {
+                os: RemoteOs::Windows,
+                arch: RemoteArch::Aarch64,
+            }),
+            "chorus-remote-server-windows-aarch64.zip"
+        );
+    }
+
+    #[test]
+    fn test_packaged_remote_server_locations_include_bundle_path() {
+        let current_dir = Path::new("/tmp/chorus");
+        let archive_name = "chorus-remote-server-linux-x86_64.gz";
+        let locations = packaged_remote_server_locations(current_dir, archive_name);
+
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(
+                locations[0],
+                PathBuf::from(
+                    "/tmp/chorus/../Resources/remote-servers/chorus-remote-server-linux-x86_64.gz"
+                )
+            );
+        }
+
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        {
+            assert_eq!(
+                locations[0],
+                PathBuf::from(
+                    "/tmp/chorus/../libexec/remote-servers/chorus-remote-server-linux-x86_64.gz"
+                )
+            );
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(
+                locations[0],
+                PathBuf::from("/tmp/chorus/remote-servers/chorus-remote-server-linux-x86_64.gz")
+            );
+        }
+
+        assert_eq!(
+            locations.last().unwrap(),
+            &PathBuf::from(format!("/tmp/chorus/{archive_name}"))
+        );
     }
 }

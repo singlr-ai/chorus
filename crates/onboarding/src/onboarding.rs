@@ -325,7 +325,7 @@ impl Render for Onboarding {
                                                     )
                                                     .child(
                                                         Label::new(
-                                                            "The native orchestration IDE for sing",
+                                                            "The integrated agent environment",
                                                         )
                                                         .color(Color::Muted)
                                                         .size(LabelSize::Small)

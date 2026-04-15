@@ -294,8 +294,8 @@ function BuildInstaller {
         "dev" {
             $appId = "{{8357632E-24A4-4F32-BA97-E575B4D1FE5D}"
             $appIconName = "app-icon-dev"
-            $appName = "Chorus Dev"
-            $appDisplayName = "Chorus Dev"
+            $appName = "Chorus"
+            $appDisplayName = "Chorus"
             $appSetupName = "Chorus-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
             $appMutex = "Chorus-Dev-Instance-Mutex"

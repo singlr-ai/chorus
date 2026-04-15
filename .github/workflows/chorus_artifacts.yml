@@ -89,6 +89,12 @@ jobs:
           if ! brew list cmake >/dev/null 2>&1; then
             brew install cmake
           fi
+          if ! brew list zig >/dev/null 2>&1; then
+            brew install zig
+          fi
+          if ! cargo zigbuild --help >/dev/null 2>&1; then
+            cargo install --locked cargo-zigbuild
+          fi
           cargo --version
 
       - name: Configure macOS SDK environment

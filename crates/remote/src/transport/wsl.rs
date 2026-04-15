@@ -1,7 +1,10 @@
 use crate::{
     RemoteArch, RemoteClientDelegate, RemoteOs, RemotePlatform,
     remote_client::{CommandTemplate, Interactive, RemoteConnection, RemoteConnectionOptions},
-    transport::{parse_platform, parse_shell},
+    transport::{
+        legacy_remote_server_binary_name, packaged_remote_server_path, parse_platform, parse_shell,
+        remote_server_binary_name,
+    },
 };
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
@@ -173,19 +176,14 @@ impl WslRemoteConnection {
         version: Version,
         cx: &mut AsyncApp,
     ) -> Result<Arc<RelPath>> {
-        let version_str = match release_channel {
-            ReleaseChannel::Dev => "build".to_string(),
-            _ => version.to_string(),
-        };
-
-        let binary_name = format!(
-            "zed-remote-server-{}-{}",
-            release_channel.dev_name(),
-            version_str
-        );
+        let binary_name = remote_server_binary_name(release_channel, &version);
+        let legacy_binary_name = legacy_remote_server_binary_name(release_channel, &version);
 
         let dst_path =
             paths::remote_server_dir_relative().join(RelPath::unix(&binary_name).unwrap());
+        let legacy_dst_path = RelPath::unix(".zed_wsl_server")
+            .unwrap()
+            .join(RelPath::unix(&legacy_binary_name).unwrap());
 
         if let Some(parent) = dst_path.parent() {
             let parent = parent.display(PathStyle::Posix);
@@ -199,6 +197,31 @@ impl WslRemoteConnection {
             .run_wsl_command(&dst_path.display(PathStyle::Posix), &["version"])
             .await
             .is_ok();
+
+        if !binary_exists_on_server
+            && self
+                .run_wsl_command(&legacy_dst_path.display(PathStyle::Posix), &["version"])
+                .await
+                .is_ok()
+        {
+            return Ok(legacy_dst_path);
+        }
+
+        if let Some(remote_server_path) = packaged_remote_server_path(self.platform) {
+            let tmp_path = paths::remote_server_dir_relative().join(
+                &RelPath::unix(&format!(
+                    "download-{}-{}",
+                    std::process::id(),
+                    remote_server_path.file_name().unwrap().to_string_lossy()
+                ))
+                .unwrap(),
+            );
+            self.upload_file(&remote_server_path, &tmp_path, delegate, cx)
+                .await?;
+            self.extract_and_install(&tmp_path, &dst_path, delegate, cx)
+                .await?;
+            return Ok(dst_path);
+        }
 
         #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
         if let Some(remote_server_path) = super::build_remote_server_from_source(

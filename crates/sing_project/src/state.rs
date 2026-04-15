@@ -94,7 +94,7 @@ impl ProjectRow {
         } else if self.agent_session.available {
             "Agent idle".to_string()
         } else if let Some(reason) = self.agent_session.reason.as_deref() {
-            format!("Agent unavailable | {reason}")
+            format!("Agent unavailable | {}", humanize_reason(reason))
         } else {
             "Agent unavailable".to_string()
         }
@@ -121,7 +121,7 @@ impl ProjectRow {
             parts.push(format!("pid {pid}"));
         }
         if let Some(reason) = self.agent_session.reason.as_deref() {
-            parts.push(reason.to_string());
+            parts.push(humanize_reason(reason));
         }
 
         parts.join(" | ")
@@ -133,7 +133,7 @@ impl ProjectRow {
             let blocked = self.specs.blocked_count.unwrap_or_default();
             format!("Specs ready {ready} | blocked {blocked}")
         } else if let Some(reason) = self.specs.reason.as_deref() {
-            format!("Specs unavailable | {reason}")
+            format!("Specs unavailable | {}", humanize_reason(reason))
         } else {
             "Specs unavailable".to_string()
         }
@@ -155,7 +155,7 @@ impl ProjectRow {
             }
             parts.join(" | ")
         } else if let Some(reason) = self.specs.reason.as_deref() {
-            reason.to_string()
+            humanize_reason(reason)
         } else {
             "Spec data unavailable".to_string()
         }
@@ -202,6 +202,38 @@ pub fn next_selection(previous: Option<&str>, projects: &[ProjectRow]) -> Option
             .find(|project| project.name == selected)
             .map(|project| project.name.clone())
     })
+}
+
+fn humanize_reason(reason: &str) -> String {
+    if !reason.contains('_') {
+        return reason.to_string();
+    }
+
+    reason
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .enumerate()
+        .map(|(index, part)| {
+            if index == 0 {
+                capitalize_word(part)
+            } else {
+                part.to_ascii_lowercase()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn capitalize_word(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => {
+            let mut capitalized = first.to_uppercase().collect::<String>();
+            capitalized.push_str(&chars.as_str().to_ascii_lowercase());
+            capitalized
+        }
+        None => String::new(),
+    }
 }
 
 #[cfg(test)]
@@ -349,6 +381,41 @@ mod tests {
         );
         assert_eq!(next_selection(Some("missing"), &projects).as_deref(), None);
         assert_eq!(next_selection(None, &projects).as_deref(), None);
+    }
+
+    #[test]
+    fn project_row_humanizes_backend_reason_codes() {
+        let row = ProjectRow {
+            name: "sing".to_string(),
+            status: ProjectStatus::Stopped,
+            ip: None,
+            description: None,
+            runtimes: None,
+            agent_session: AgentSessionInfo {
+                available: false,
+                running: false,
+                reason: Some("project_stopped".to_string()),
+                pid: None,
+                task: None,
+                started_at: None,
+                branch: None,
+                log_path: None,
+            },
+            specs: ProjectSpecAvailability {
+                available: false,
+                reason: Some("project_stopped".to_string()),
+                counts: None,
+                ready_count: None,
+                blocked_count: None,
+                next_ready_id: None,
+            },
+            detail_error: None,
+        };
+
+        assert_eq!(row.agent_summary(), "Agent unavailable | Project stopped");
+        assert_eq!(row.agent_detail(), "Agent unavailable | Project stopped");
+        assert_eq!(row.spec_summary(), "Specs unavailable | Project stopped");
+        assert_eq!(row.spec_detail(), "Project stopped");
     }
 
     fn project_config(name: &str, status: ProjectStatus) -> ProjectConfig {
