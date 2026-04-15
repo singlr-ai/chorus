@@ -80,6 +80,7 @@ pub fn init(cx: &mut App) {
 
 pub struct SingProjectPanel {
     workspace: WeakEntity<Workspace>,
+    serialization_key: Option<String>,
     focus_handle: FocusHandle,
     client_factory: Arc<dyn SingProjectClientFactory>,
     client: Option<Arc<dyn SingProjectClient>>,
@@ -144,6 +145,7 @@ impl SingProjectPanel {
         client_factory: Arc<dyn SingProjectClientFactory>,
         cx: &mut Context<Workspace>,
     ) -> Entity<Self> {
+        let serialization_key = Self::serialization_key(workspace);
         let workspace = workspace.weak_handle();
         let position = serialized
             .and_then(|panel| panel.position)
@@ -152,6 +154,7 @@ impl SingProjectPanel {
 
         cx.new(|cx| Self {
             workspace,
+            serialization_key,
             focus_handle: cx.focus_handle(),
             client_factory,
             client: None,
@@ -177,12 +180,7 @@ impl SingProjectPanel {
     }
 
     fn serialize(&mut self, cx: &mut Context<Self>) {
-        let Some(serialization_key) = self
-            .workspace
-            .read_with(cx, |workspace, _| Self::serialization_key(workspace))
-            .ok()
-            .flatten()
-        else {
+        let Some(serialization_key) = self.serialization_key.clone() else {
             return;
         };
 
