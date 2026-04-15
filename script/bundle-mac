@@ -224,7 +224,7 @@ function build_remote_server_archive() {
 }
 
 function prepare_remote_server_archives() {
-    if [[ "${target_dir}" != "release" ]]; then
+    if [[ "${target_dir}" != "release" || "$app_only" = true ]]; then
         return
     fi
 
