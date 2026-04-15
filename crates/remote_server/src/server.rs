@@ -465,7 +465,7 @@ pub fn execute_run(
         crashes::InitCrashHandler {
             session_id: id,
             zed_version: VERSION.to_owned(),
-            binary: "zed-remote-server".to_string(),
+            binary: "chorus-remote-server".to_string(),
             release_channel: release_channel::RELEASE_CHANNEL_NAME.clone(),
             commit_sha: option_env!("ZED_COMMIT_SHA").unwrap_or("no_sha").to_owned(),
         },
@@ -720,7 +720,7 @@ pub(crate) fn execute_proxy(
         crashes::InitCrashHandler {
             session_id: id,
             zed_version: VERSION.to_owned(),
-            binary: "zed-remote-server".to_string(),
+            binary: "chorus-remote-server".to_string(),
             release_channel: release_channel::RELEASE_CHANNEL_NAME.clone(),
             commit_sha: option_env!("ZED_COMMIT_SHA").unwrap_or("no_sha").to_owned(),
         },
@@ -1178,14 +1178,22 @@ fn read_proxy_settings(cx: &mut Context<HeadlessProject>) -> Option<Url> {
 fn cleanup_old_binaries() -> Result<()> {
     let server_dir = paths::remote_server_dir_relative();
     let release_channel = release_channel::RELEASE_CHANNEL.dev_name();
-    let prefix = format!("zed-remote-server-{}-", release_channel);
+    let prefixes = [
+        format!("chorus-remote-server-{}-", release_channel),
+        format!("zed-remote-server-{}-", release_channel),
+    ];
 
     for entry in std::fs::read_dir(server_dir.as_std_path())? {
         let path = entry?.path();
 
         if let Some(file_name) = path.file_name()
-            && let Some(version) = file_name.to_string_lossy().strip_prefix(&prefix)
-            && !is_new_version(version)
+            && let Some(version) = prefixes.iter().find_map(|prefix| {
+                file_name
+                    .to_string_lossy()
+                    .strip_prefix(prefix)
+                    .map(str::to_string)
+            })
+            && !is_new_version(&version)
             && !is_file_in_use(file_name)
         {
             log::info!("removing old remote server binary: {:?}", path);

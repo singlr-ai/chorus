@@ -13,8 +13,8 @@ use recent_projects::open_remote_project;
 use serde::{Deserialize, Serialize};
 use sing_bridge::ProjectStatus;
 use ui::{
-    Button, Color, Icon, IconName, IconSize, Indicator, Label, LabelSize, ListItem,
-    ListItemSpacing, Tooltip, prelude::*,
+    Button, Color, Icon, IconButtonShape, IconName, IconSize, Indicator, Label, LabelSize,
+    ListItem, ListItemSpacing, Tooltip, prelude::*,
 };
 use util::{ResultExt, TryFutureExt};
 use workspace::{
@@ -159,7 +159,7 @@ impl SingProjectPanel {
             client_factory,
             client: None,
             position,
-            active: serialized.and_then(|panel| panel.active).unwrap_or(false),
+            active: serialized.and_then(|panel| panel.active).unwrap_or(true),
             loading: false,
             last_error: None,
             projects: Vec::new(),
@@ -477,23 +477,22 @@ impl SingProjectPanel {
             .border_color(theme.colors().border_variant)
             .bg(theme.colors().editor_background)
             .child(
-                v_flex()
-                    .gap_0p5()
-                    .child(Label::new("Chorus Projects"))
-                    .child(
-                        Label::new(if self.loading {
-                            "Refreshing sing project state"
-                        } else {
-                            "Project lifecycle and remote open"
-                        })
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
-                    ),
+                v_flex().gap_0p5().child(Label::new("Projects")).child(
+                    Label::new(if self.loading {
+                        "Refreshing project state"
+                    } else {
+                        "Lifecycle, specs, and remote access"
+                    })
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+                ),
             )
             .child(
-                Button::new("sing-project-refresh", "Refresh")
-                    .label_size(LabelSize::Small)
-                    .loading(self.loading)
+                IconButton::new("sing-project-refresh", IconName::RotateCw)
+                    .shape(IconButtonShape::Square)
+                    .icon_size(IconSize::Small)
+                    .disabled(self.loading)
+                    .style(ButtonStyle::Subtle)
                     .tooltip(Tooltip::text("Refresh sing project state"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.refresh(window, cx);
@@ -781,7 +780,7 @@ impl Render for SingProjectPanel {
 
 impl Panel for SingProjectPanel {
     fn persistent_name() -> &'static str {
-        "Chorus Projects"
+        "Projects"
     }
 
     fn panel_key() -> &'static str {
@@ -818,7 +817,7 @@ impl Panel for SingProjectPanel {
     }
 
     fn icon_tooltip(&self, _: &Window, _: &App) -> Option<&'static str> {
-        Some("Chorus Projects")
+        Some("Projects")
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {

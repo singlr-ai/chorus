@@ -118,7 +118,7 @@ macos() {
         app_id="ai.singlr.Chorus-Preview"
         ;;
       dev)
-        app="Chorus Dev.app"
+        app="Chorus.app"
         db_suffix="dev"
         app_id="ai.singlr.Chorus-Dev"
         ;;

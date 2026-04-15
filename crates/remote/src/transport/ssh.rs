@@ -1,7 +1,10 @@
 use crate::{
     RemoteArch, RemoteClientDelegate, RemoteOs, RemotePlatform,
     remote_client::{CommandTemplate, Interactive, RemoteConnection, RemoteConnectionOptions},
-    transport::{parse_platform, parse_shell},
+    transport::{
+        legacy_remote_server_binary_name, packaged_remote_server_path, parse_platform, parse_shell,
+        remote_server_binary_name,
+    },
 };
 use anyhow::{Context as _, Result, anyhow};
 use async_trait::async_trait;
@@ -643,14 +646,18 @@ impl SshRemoteConnection {
         version: Version,
         cx: &mut AsyncApp,
     ) -> Result<Arc<RelPath>> {
-        let version_str = match release_channel {
-            ReleaseChannel::Dev => "build".to_string(),
-            _ => version.to_string(),
-        };
         let binary_name = format!(
-            "zed-remote-server-{}-{}{}",
-            release_channel.dev_name(),
-            version_str,
+            "{}{}",
+            remote_server_binary_name(release_channel, &version),
+            if self.ssh_platform.os.is_windows() {
+                ".exe"
+            } else {
+                ""
+            }
+        );
+        let legacy_binary_name = format!(
+            "{}{}",
+            legacy_remote_server_binary_name(release_channel, &version),
             if self.ssh_platform.os.is_windows() {
                 ".exe"
             } else {
@@ -659,6 +666,9 @@ impl SshRemoteConnection {
         );
         let dst_path =
             paths::remote_server_dir_relative().join(RelPath::unix(&binary_name).unwrap());
+        let legacy_dst_path = RelPath::unix(".zed_server")
+            .unwrap()
+            .join(RelPath::unix(&legacy_binary_name).unwrap());
 
         let binary_exists_on_server = self
             .socket
@@ -670,6 +680,37 @@ impl SshRemoteConnection {
             )
             .await
             .is_ok();
+
+        if !binary_exists_on_server
+            && self
+                .socket
+                .run_command(
+                    self.ssh_shell_kind,
+                    &legacy_dst_path.display(self.path_style()),
+                    &["version"],
+                    true,
+                )
+                .await
+                .is_ok()
+        {
+            return Ok(legacy_dst_path);
+        }
+
+        if let Some(remote_server_path) = packaged_remote_server_path(self.ssh_platform) {
+            let tmp_path = paths::remote_server_dir_relative().join(
+                RelPath::unix(&format!(
+                    "download-{}-{}",
+                    std::process::id(),
+                    remote_server_path.file_name().unwrap().to_string_lossy()
+                ))
+                .unwrap(),
+            );
+            self.upload_local_server_binary(&remote_server_path, &tmp_path, delegate, cx)
+                .await?;
+            self.extract_server_binary(&dst_path, &tmp_path, delegate, cx)
+                .await?;
+            return Ok(dst_path);
+        }
 
         #[cfg(any(debug_assertions, feature = "build-remote-server-binary"))]
         if let Some(remote_server_path) = super::build_remote_server_from_source(
@@ -703,7 +744,7 @@ impl SshRemoteConnection {
             ReleaseChannel::Nightly => Ok(None),
             ReleaseChannel::Dev => {
                 anyhow::bail!(
-                    "ZED_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
+                    "CHORUS_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
                     dst_path
                 )
             }

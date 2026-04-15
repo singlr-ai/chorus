@@ -74,6 +74,7 @@ if [[ $# -gt 0 && -n "$1" ]]; then
     target_triple="$1"
 fi
 arch_suffix=""
+remote_server_bundle_dir="target/remote-servers"
 
 if [[ "$target_triple" = "x86_64-apple-darwin" ]]; then
     arch_suffix="x86_64"
@@ -193,6 +194,61 @@ function download_git() {
 
     mv "${tmp_dir}/git" "${target_binary}"
     rm -rf "$tmp_dir"
+}
+
+function build_remote_server_archive() {
+    local target=$1
+    local platform_os=$2
+    local platform_arch=$3
+    local binary_path="target/${target}/${target_dir}/remote_server"
+    local archive_path="${remote_server_bundle_dir}/chorus-remote-server-${platform_os}-${platform_arch}.gz"
+
+    rustup target add "$target"
+
+    if [[ "$target" == "$target_triple" ]]; then
+        cargo build ${build_flag} --package remote_server --target "$target"
+    else
+        if ! command -v zig >/dev/null 2>&1; then
+            echo "zig not found; skipping bundled remote server for ${platform_os}-${platform_arch}"
+            return
+        fi
+        if ! cargo zigbuild --help >/dev/null 2>&1; then
+            echo "cargo-zigbuild not found; skipping bundled remote server for ${platform_os}-${platform_arch}"
+            return
+        fi
+        cargo zigbuild ${build_flag} --package remote_server --target "$target"
+    fi
+
+    mkdir -p "${remote_server_bundle_dir}"
+    gzip -f --stdout --best "${binary_path}" > "${archive_path}"
+}
+
+function prepare_remote_server_archives() {
+    if [[ "${target_dir}" != "release" ]]; then
+        return
+    fi
+
+    rm -rf "${remote_server_bundle_dir}"
+    mkdir -p "${remote_server_bundle_dir}"
+
+    build_remote_server_archive "x86_64-unknown-linux-gnu" "linux" "x86_64"
+}
+
+function copy_remote_server_archives_into_app() {
+    if [[ ! -d "${remote_server_bundle_dir}" ]]; then
+        return
+    fi
+
+    shopt -s nullglob
+    archives=("${remote_server_bundle_dir}"/*.gz)
+    shopt -u nullglob
+    if [[ ${#archives[@]} -eq 0 ]]; then
+        return
+    fi
+
+    local bundle_remote_dir="${app_path}/Contents/Resources/remote-servers"
+    mkdir -p "${bundle_remote_dir}"
+    cp "${archives[@]}" "${bundle_remote_dir}/"
 }
 
 function sign_app_binaries() {
@@ -345,8 +401,11 @@ function upload_debug_symbols() {
 
 upload_debug_symbols
 
+prepare_remote_server_archives
+
 cp target/${target_triple}/${target_dir}/chorus "${app_path}/Contents/MacOS/chorus"
 cp target/${target_triple}/${target_dir}/cli "${app_path}/Contents/MacOS/cli"
+copy_remote_server_archives_into_app
 sign_app_binaries
 
 if [ "$app_only" = false ]; then

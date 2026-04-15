@@ -493,7 +493,7 @@ impl Render for WelcomePage {
                             .child(Vector::square(VectorName::ZedLogo, rems_from_px(45.)))
                             .child(
                                 v_flex().child(Headline::new(welcome_label)).child(
-                                    Label::new("The native orchestration IDE for sing")
+                                    Label::new("The integrated agent environment")
                                         .size(LabelSize::Small)
                                         .color(Color::Muted)
                                         .italic(),
