@@ -5,9 +5,9 @@ use std::time::Duration;
 use anyhow::{Context as _, Result, anyhow};
 use db::kvp::KeyValueStore;
 use gpui::{
-    Action, AnyElement, App, AsyncWindowContext, Context, ElementId, Entity, EventEmitter,
-    FocusHandle, Focusable, ParentElement, Pixels, Render, StatefulInteractiveElement, Styled,
-    Task, WeakEntity, Window, actions, px,
+    Action, AnyElement, App, AsyncWindowContext, Context, Entity, EventEmitter, FocusHandle,
+    Focusable, ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, Task, WeakEntity,
+    Window, actions, px,
 };
 use recent_projects::open_remote_project;
 use serde::{Deserialize, Serialize};
@@ -568,7 +568,7 @@ impl SingProjectPanel {
             .map(|project| {
                 let project_name = project.name.clone();
                 let status_color = status_color(project.status);
-                ListItem::new((ElementId::from("sing-project-row"), project_name.clone()))
+                ListItem::new(format!("sing-project-row-{project_name}"))
                     .inset(true)
                     .spacing(ListItemSpacing::Sparse)
                     .toggle_state(selected_project == Some(project_name.as_str()))
@@ -689,7 +689,7 @@ impl SingProjectPanel {
                         .gap_2()
                         .child(
                             Button::new(
-                                (ElementId::from("sing-project-open"), project.name.clone()),
+                                format!("sing-project-open-{}", project.name),
                                 "Open remote",
                             )
                             .label_size(LabelSize::Small)
@@ -706,7 +706,7 @@ impl SingProjectPanel {
                             let project_name = project.name.clone();
                             element.child(
                                 Button::new(
-                                    (ElementId::from("sing-project-start"), project.name.clone()),
+                                    format!("sing-project-start-{}", project.name),
                                     "Start",
                                 )
                                 .label_size(LabelSize::Small)
@@ -723,24 +723,19 @@ impl SingProjectPanel {
                         .when(can_stop, |element| {
                             let project_name = project.name.clone();
                             element.child(
-                                Button::new(
-                                    (ElementId::from("sing-project-stop"), project.name.clone()),
-                                    "Stop",
-                                )
-                                .label_size(LabelSize::Small)
-                                .loading(stop_pending)
-                                .disabled(open_pending || start_pending)
-                                .tooltip(Tooltip::text("Run sing down for this project"))
-                                .on_click(cx.listener(
-                                    move |this, _, window, cx| {
+                                Button::new(format!("sing-project-stop-{}", project.name), "Stop")
+                                    .label_size(LabelSize::Small)
+                                    .loading(stop_pending)
+                                    .disabled(open_pending || start_pending)
+                                    .tooltip(Tooltip::text("Run sing down for this project"))
+                                    .on_click(cx.listener(move |this, _, window, cx| {
                                         this.stop_project(project_name.clone(), window, cx);
-                                    },
-                                )),
+                                    })),
                             )
                         })
                         .child(
                             Button::new(
-                                (ElementId::from("sing-project-agent"), project.name.clone()),
+                                format!("sing-project-agent-{}", project.name),
                                 "Agent status",
                             )
                             .label_size(LabelSize::Small)
