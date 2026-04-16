@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow};
 use db::kvp::KeyValueStore;
+use editor::{Editor, EditorEvent};
 use gpui::{
     Action, AnyElement, App, AsyncWindowContext, Context, Entity, EventEmitter, FocusHandle,
     Focusable, ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, Task, WeakEntity,
@@ -13,8 +14,8 @@ use recent_projects::open_remote_project;
 use serde::{Deserialize, Serialize};
 use sing_bridge::ProjectStatus;
 use ui::{
-    Button, Color, Icon, IconButtonShape, IconName, IconSize, Indicator, Label, LabelSize,
-    ListItem, ListItemSpacing, Tooltip, prelude::*,
+    Button, Chip, Color, Icon, IconButtonShape, IconName, IconSize, Indicator, Label, LabelSize,
+    ListItem, ListItemSpacing, TintColor, Tooltip, prelude::*,
 };
 use util::{ResultExt, TryFutureExt};
 use workspace::{
@@ -84,10 +85,12 @@ pub struct SingProjectPanel {
     focus_handle: FocusHandle,
     client_factory: Arc<dyn SingProjectClientFactory>,
     client: Option<Arc<dyn SingProjectClient>>,
+    search_bar: Entity<Editor>,
     position: DockPosition,
     active: bool,
     loading: bool,
     last_error: Option<String>,
+    last_refreshed_at: Option<Instant>,
     projects: Vec<ProjectRow>,
     selected_project: Option<String>,
     pending_actions: HashMap<String, ProjectActionKind>,
@@ -130,7 +133,7 @@ impl SingProjectPanel {
         };
 
         workspace.update_in(&mut cx, |workspace, window, cx| {
-            let panel = Self::new(workspace, serialized.as_ref(), client_factory, cx);
+            let panel = Self::new(workspace, serialized.as_ref(), client_factory, window, cx);
             panel.update(cx, |panel, cx| {
                 panel.refresh(window, cx);
                 panel.start_polling(window, cx);
@@ -143,6 +146,7 @@ impl SingProjectPanel {
         workspace: &mut Workspace,
         serialized: Option<&SerializedSingProjectPanel>,
         client_factory: Arc<dyn SingProjectClientFactory>,
+        window: &mut Window,
         cx: &mut Context<Workspace>,
     ) -> Entity<Self> {
         let serialization_key = Self::serialization_key(workspace);
@@ -152,22 +156,41 @@ impl SingProjectPanel {
             .map(SerializedDockPosition::to_dock_position)
             .unwrap_or(DockPosition::Left);
 
-        cx.new(|cx| Self {
-            workspace,
-            serialization_key,
-            focus_handle: cx.focus_handle(),
-            client_factory,
-            client: None,
-            position,
-            active: serialized.and_then(|panel| panel.active).unwrap_or(true),
-            loading: false,
-            last_error: None,
-            projects: Vec::new(),
-            selected_project: serialized.and_then(|panel| panel.selected_project.clone()),
-            pending_actions: HashMap::default(),
-            current_request_id: 0,
-            pending_serialization: Task::ready(None),
-            polling_task: Task::ready(()),
+        cx.new(|cx| {
+            let search_bar = cx.new(|cx| {
+                let mut editor = Editor::single_line(window, cx);
+                editor.set_placeholder_text("Filter projects...", window, cx);
+                editor
+            });
+            cx.subscribe(&search_bar, |_this, _, event: &EditorEvent, cx| {
+                if matches!(
+                    event,
+                    EditorEvent::BufferEdited | EditorEvent::Edited { .. }
+                ) {
+                    cx.notify();
+                }
+            })
+            .detach();
+
+            Self {
+                workspace,
+                serialization_key,
+                focus_handle: cx.focus_handle(),
+                client_factory,
+                client: None,
+                search_bar,
+                position,
+                active: serialized.and_then(|panel| panel.active).unwrap_or(true),
+                loading: false,
+                last_error: None,
+                last_refreshed_at: None,
+                projects: Vec::new(),
+                selected_project: serialized.and_then(|panel| panel.selected_project.clone()),
+                pending_actions: HashMap::default(),
+                current_request_id: 0,
+                pending_serialization: Task::ready(None),
+                polling_task: Task::ready(()),
+            }
         })
     }
 
@@ -276,6 +299,7 @@ impl SingProjectPanel {
 
         match result {
             Ok(projects) => {
+                self.last_refreshed_at = Some(Instant::now());
                 self.projects = projects;
                 self.selected_project =
                     next_selection(self.selected_project.as_deref(), &self.projects);
@@ -454,10 +478,10 @@ impl SingProjectPanel {
         }
     }
 
-    fn selected_row(&self) -> Option<&ProjectRow> {
+    fn selected_visible_row(&self, cx: &App) -> Option<&ProjectRow> {
         let selected_project = self.selected_project.as_deref()?;
-        self.projects
-            .iter()
+        self.filtered_projects(cx)
+            .into_iter()
             .find(|project| project.name == selected_project)
     }
 
@@ -465,38 +489,176 @@ impl SingProjectPanel {
         self.pending_actions.get(project).copied() == Some(action)
     }
 
+    fn search_query(&self, cx: &App) -> String {
+        self.search_bar
+            .read(cx)
+            .text(cx)
+            .trim()
+            .to_ascii_lowercase()
+    }
+
+    fn filtered_projects<'a>(&'a self, cx: &App) -> Vec<&'a ProjectRow> {
+        let query = self.search_query(cx);
+        self.projects
+            .iter()
+            .filter(|project| Self::matches_search_query(project, &query))
+            .collect()
+    }
+
+    fn matches_search_query(project: &ProjectRow, query: &str) -> bool {
+        query.is_empty()
+            || contains_query(&project.name, query)
+            || project
+                .description
+                .as_deref()
+                .is_some_and(|value| contains_query(value, query))
+            || contains_query(project.status_label(), query)
+            || contains_query(&project.agent_summary(), query)
+            || contains_query(&project.spec_summary(), query)
+            || contains_query(&project.agent_detail(), query)
+            || contains_query(&project.spec_detail(), query)
+            || project
+                .runtime_summary()
+                .as_deref()
+                .is_some_and(|value| contains_query(value, query))
+    }
+
+    fn refresh_status_label(&self) -> Option<String> {
+        let refreshed_at = self.last_refreshed_at?;
+        let elapsed = refreshed_at.elapsed().as_secs();
+
+        Some(if elapsed < 5 {
+            "Updated just now".to_string()
+        } else if elapsed < 60 {
+            format!("Updated {elapsed}s ago")
+        } else if elapsed < 3600 {
+            format!("Updated {}m ago", elapsed / 60)
+        } else {
+            format!("Updated {}h ago", elapsed / 3600)
+        })
+    }
+
+    fn project_badges(&self, project: &ProjectRow) -> Vec<Chip> {
+        let mut badges = vec![Self::badge(
+            project.agent_badge(),
+            match project.status {
+                ProjectStatus::Running if project.agent_session.running => Color::Accent,
+                ProjectStatus::Running => Color::Muted,
+                ProjectStatus::Error => Color::Error,
+                ProjectStatus::Stopped | ProjectStatus::NotCreated => Color::Warning,
+            },
+        )];
+
+        if let Some(ready) = project.ready_count() {
+            badges.push(Self::badge(
+                format!("Ready {ready}"),
+                if ready > 0 {
+                    Color::Success
+                } else {
+                    Color::Muted
+                },
+            ));
+        }
+
+        if let Some(blocked) = project.blocked_count() {
+            badges.push(Self::badge(
+                format!("Blocked {blocked}"),
+                if blocked > 0 {
+                    Color::Warning
+                } else {
+                    Color::Muted
+                },
+            ));
+        }
+
+        if project.status == ProjectStatus::Running && !project.specs.available {
+            badges.push(Self::badge("Specs unavailable", Color::Warning));
+        }
+
+        badges
+    }
+
+    fn project_status_chip(&self, project: &ProjectRow) -> Chip {
+        Self::badge(project.status_label(), status_color(project.status))
+    }
+
+    fn badge(label: impl Into<String>, color: Color) -> Chip {
+        Chip::new(label.into()).label_color(color)
+    }
+
+    fn project_secondary_line(&self, project: &ProjectRow) -> Option<String> {
+        project
+            .current_task()
+            .map(|task| format!("Current task: {task}"))
+            .or_else(|| {
+                project
+                    .next_ready_id()
+                    .map(|next_ready| format!("Next ready: {next_ready}"))
+            })
+    }
+
     fn render_header(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
-        h_flex()
+        v_flex()
             .w_full()
-            .items_center()
-            .justify_between()
-            .gap_2()
+            .gap_1p5()
             .p_2()
             .border_b_1()
             .border_color(theme.colors().border_variant)
             .bg(theme.colors().editor_background)
             .child(
-                v_flex().gap_0p5().child(Label::new("Projects")).child(
-                    Label::new(if self.loading {
-                        "Refreshing project state"
-                    } else {
-                        "Lifecycle, specs, and remote access"
-                    })
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
-                ),
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(Label::new("Projects"))
+                    .child(
+                        IconButton::new("sing-project-refresh", IconName::RotateCw)
+                            .shape(IconButtonShape::Square)
+                            .icon_size(IconSize::Small)
+                            .disabled(self.loading)
+                            .style(ButtonStyle::Subtle)
+                            .tooltip(Tooltip::text("Refresh project state"))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.refresh(window, cx);
+                            })),
+                    ),
             )
             .child(
-                IconButton::new("sing-project-refresh", IconName::RotateCw)
-                    .shape(IconButtonShape::Square)
-                    .icon_size(IconSize::Small)
-                    .disabled(self.loading)
-                    .style(ButtonStyle::Subtle)
-                    .tooltip(Tooltip::text("Refresh sing project state"))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.refresh(window, cx);
-                    })),
+                h_flex()
+                    .py_1()
+                    .px_1p5()
+                    .gap_1p5()
+                    .rounded_sm()
+                    .bg(theme.colors().panel_background)
+                    .border_1()
+                    .border_color(theme.colors().border_variant)
+                    .child(Icon::new(IconName::MagnifyingGlass).color(Color::Muted))
+                    .child(self.search_bar.clone()),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        Label::new(if self.loading {
+                            "Refreshing project state"
+                        } else {
+                            "Lifecycle, specs, and remote access"
+                        })
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                    )
+                    .when_some(self.refresh_status_label(), |element, refreshed| {
+                        element.child(
+                            Label::new(refreshed)
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                    }),
             )
             .into_any_element()
     }
@@ -536,7 +698,7 @@ impl SingProjectPanel {
                 .gap_2()
                 .child(Icon::new(IconName::RotateCw).color(Color::Muted))
                 .child(
-                    Label::new("Loading sing projects")
+                    Label::new("Loading projects")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -551,7 +713,23 @@ impl SingProjectPanel {
                 .gap_2()
                 .child(Icon::new(IconName::Server).color(Color::Muted))
                 .child(
-                    Label::new("No sing projects found")
+                    Label::new("No projects found")
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+                .into_any_element();
+        }
+
+        let filtered_projects = self.filtered_projects(cx);
+        if filtered_projects.is_empty() {
+            return v_flex()
+                .size_full()
+                .justify_center()
+                .items_center()
+                .gap_2()
+                .child(Icon::new(IconName::MagnifyingGlass).color(Color::Muted))
+                .child(
+                    Label::new("No projects match this filter")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -559,45 +737,42 @@ impl SingProjectPanel {
         }
 
         let selected_project = self.selected_project.as_deref();
-        let items = self
-            .projects
-            .iter()
+        let items = filtered_projects
+            .into_iter()
             .map(|project| {
                 let project_name = project.name.clone();
                 let status_color = status_color(project.status);
+                let secondary_line = self.project_secondary_line(project);
                 ListItem::new(format!("sing-project-row-{project_name}"))
                     .inset(true)
                     .spacing(ListItemSpacing::Sparse)
                     .toggle_state(selected_project == Some(project_name.as_str()))
                     .start_slot(Indicator::dot().color(status_color))
+                    .end_slot(self.project_status_chip(project))
                     .child(
                         v_flex()
                             .w_full()
                             .gap_1()
                             .child(
+                                Label::new(project.name.clone())
+                                    .size(LabelSize::Small)
+                                    .truncate(),
+                            )
+                            .child(
                                 h_flex()
                                     .w_full()
-                                    .justify_between()
-                                    .gap_2()
-                                    .child(Label::new(project.name.clone()).truncate())
-                                    .child(
-                                        Label::new(project.status_label())
-                                            .size(LabelSize::XSmall)
-                                            .color(status_color),
-                                    ),
+                                    .gap_1()
+                                    .flex_wrap()
+                                    .children(self.project_badges(project)),
                             )
-                            .child(
-                                Label::new(project.agent_summary())
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted)
-                                    .truncate(),
-                            )
-                            .child(
-                                Label::new(project.spec_summary())
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted)
-                                    .truncate(),
-                            ),
+                            .when_some(secondary_line, |element, line| {
+                                element.child(
+                                    Label::new(line)
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted)
+                                        .truncate(),
+                                )
+                            }),
                     )
                     .tooltip(Tooltip::text(project.name.clone()))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -616,7 +791,7 @@ impl SingProjectPanel {
     }
 
     fn render_selected_project(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let project = self.selected_row()?;
+        let project = self.selected_visible_row(cx)?;
         let theme = cx.theme();
         let open_pending = self.is_action_pending(&project.name, ProjectActionKind::Open);
         let start_pending = self.is_action_pending(&project.name, ProjectActionKind::Start);
@@ -630,6 +805,8 @@ impl SingProjectPanel {
         let can_open = project.can_open();
         let can_start = project.can_start();
         let can_stop = project.can_stop();
+        let status_chip = self.project_status_chip(project);
+        let secondary_line = self.project_secondary_line(project);
 
         Some(
             v_flex()
@@ -639,7 +816,14 @@ impl SingProjectPanel {
                 .border_t_1()
                 .border_color(theme.colors().border_variant)
                 .bg(theme.colors().editor_background)
-                .child(Label::new(project.name.clone()))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .gap_2()
+                        .child(Label::new(project.name.clone()))
+                        .child(status_chip),
+                )
                 .when_some(project.description.as_ref(), |element, description| {
                     element.child(
                         Label::new(description.clone())
@@ -648,11 +832,34 @@ impl SingProjectPanel {
                     )
                 })
                 .child(
+                    h_flex()
+                        .w_full()
+                        .gap_1()
+                        .flex_wrap()
+                        .children(self.project_badges(project)),
+                )
+                .when_some(secondary_line, |element, line| {
+                    element.child(
+                        Label::new(line)
+                            .size(LabelSize::Small)
+                            .color(Color::Accent)
+                            .truncate(),
+                    )
+                })
+                .child(
                     Label::new(runtime_summary)
                         .size(LabelSize::Small)
                         .color(Color::Muted)
                         .truncate(),
                 )
+                .when_some(project.branch(), |element, branch| {
+                    element.child(
+                        Label::new(format!("Branch {branch}"))
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .truncate(),
+                    )
+                })
                 .child(
                     Label::new(project.agent_detail())
                         .size(LabelSize::Small)
@@ -684,11 +891,13 @@ impl SingProjectPanel {
                     h_flex()
                         .w_full()
                         .gap_2()
+                        .flex_wrap()
                         .child(
                             Button::new(
                                 format!("sing-project-open-{}", project.name),
                                 "Open remote",
                             )
+                            .style(ButtonStyle::Filled)
                             .label_size(LabelSize::Small)
                             .loading(open_pending)
                             .disabled(!can_open || start_pending || stop_pending)
@@ -706,6 +915,7 @@ impl SingProjectPanel {
                                     format!("sing-project-start-{}", project.name),
                                     "Start",
                                 )
+                                .style(ButtonStyle::Tinted(TintColor::Success))
                                 .label_size(LabelSize::Small)
                                 .loading(start_pending)
                                 .disabled(open_pending || stop_pending)
@@ -721,6 +931,7 @@ impl SingProjectPanel {
                             let project_name = project.name.clone();
                             element.child(
                                 Button::new(format!("sing-project-stop-{}", project.name), "Stop")
+                                    .style(ButtonStyle::Tinted(TintColor::Warning))
                                     .label_size(LabelSize::Small)
                                     .loading(stop_pending)
                                     .disabled(open_pending || start_pending)
@@ -735,6 +946,7 @@ impl SingProjectPanel {
                                 format!("sing-project-agent-{}", project.name),
                                 "Agent status",
                             )
+                            .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
                             .tooltip(Tooltip::text("Show current agent status"))
                             .on_click(cx.listener(
@@ -863,4 +1075,8 @@ fn status_color(status: ProjectStatus) -> Color {
         ProjectStatus::NotCreated => Color::Muted,
         ProjectStatus::Error => Color::Error,
     }
+}
+
+fn contains_query(value: &str, query: &str) -> bool {
+    value.to_ascii_lowercase().contains(query)
 }
