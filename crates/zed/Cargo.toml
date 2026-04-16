@@ -191,6 +191,7 @@ settings_ui.workspace = true
 shellexpand.workspace = true
 sidebar.workspace = true
 sing_project.workspace = true
+sing_spec.workspace = true
 smol.workspace = true
 snippet_provider.workspace = true
 snippets_ui.workspace = true

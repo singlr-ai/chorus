@@ -16205,14 +16205,22 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "db",
+ "editor",
  "futures 0.3.32",
+ "gpui",
  "pretty_assertions",
+ "recent_projects",
  "remote",
+ "serde",
+ "serde_json",
  "serde_yaml",
  "sing_bridge",
  "smol",
  "tempfile",
+ "ui",
  "util",
+ "workspace",
 ]
 
 [[package]]
@@ -22302,6 +22310,7 @@ dependencies = [
  "shellexpand",
  "sidebar",
  "sing_project",
+ "sing_spec",
  "smol",
  "snippet_provider",
  "snippets_ui",

@@ -717,6 +717,7 @@ pub fn main() {
         project_panel::init(cx);
         outline_panel::init(cx);
         sing_project::init(cx);
+        sing_spec::init(cx);
         tasks_ui::init(cx);
         snippets_ui::init(cx);
         channel::init(&app_state.client.clone(), app_state.user_store.clone(), cx);
