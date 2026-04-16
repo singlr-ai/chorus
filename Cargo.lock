@@ -16187,6 +16187,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "db",
+ "editor",
  "futures 0.3.32",
  "gpui",
  "recent_projects",

@@ -12,6 +12,7 @@ path = "src/sing_project.rs"
 anyhow.workspace = true
 async-trait.workspace = true
 db.workspace = true
+editor.workspace = true
 futures.workspace = true
 gpui.workspace = true
 recent_projects.workspace = true

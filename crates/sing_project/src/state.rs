@@ -66,7 +66,12 @@ impl ProjectRow {
     }
 
     pub fn status_label(&self) -> &'static str {
-        self.status.as_str()
+        match self.status {
+            ProjectStatus::Running => "Running",
+            ProjectStatus::Stopped => "Stopped",
+            ProjectStatus::NotCreated => "Not created",
+            ProjectStatus::Error => "Error",
+        }
     }
 
     pub fn can_open(&self) -> bool {
@@ -97,6 +102,21 @@ impl ProjectRow {
             format!("Agent unavailable | {}", humanize_reason(reason))
         } else {
             "Agent unavailable".to_string()
+        }
+    }
+
+    pub fn agent_badge(&self) -> &'static str {
+        if self.agent_session.running {
+            "Agent active"
+        } else if self.agent_session.available {
+            "Agent idle"
+        } else if matches!(
+            self.status,
+            ProjectStatus::Stopped | ProjectStatus::NotCreated
+        ) {
+            "Agent paused"
+        } else {
+            "Agent unavailable"
         }
     }
 
@@ -161,6 +181,33 @@ impl ProjectRow {
         }
     }
 
+    pub fn ready_count(&self) -> Option<u32> {
+        self.specs
+            .available
+            .then_some(self.specs.ready_count.unwrap_or_default())
+    }
+
+    pub fn blocked_count(&self) -> Option<u32> {
+        self.specs
+            .available
+            .then_some(self.specs.blocked_count.unwrap_or_default())
+    }
+
+    pub fn next_ready_id(&self) -> Option<&str> {
+        self.specs
+            .available
+            .then_some(self.specs.next_ready_id.as_deref())
+            .flatten()
+    }
+
+    pub fn current_task(&self) -> Option<&str> {
+        self.agent_session.task.as_deref()
+    }
+
+    pub fn branch(&self) -> Option<&str> {
+        self.agent_session.branch.as_deref()
+    }
+
     pub fn runtime_summary(&self) -> Option<String> {
         let runtimes = self.runtimes.as_ref()?;
         let mut parts = Vec::new();
@@ -191,7 +238,11 @@ pub async fn load_project_rows(client: Arc<dyn SingProjectClient>) -> Result<Vec
     .await;
 
     let mut rows = rows;
-    rows.sort_by(|left, right| left.name.cmp(&right.name));
+    rows.sort_by(|left, right| {
+        project_status_rank(left.status)
+            .cmp(&project_status_rank(right.status))
+            .then_with(|| left.name.cmp(&right.name))
+    });
     Ok(rows)
 }
 
@@ -222,6 +273,15 @@ fn humanize_reason(reason: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn project_status_rank(status: ProjectStatus) -> u8 {
+    match status {
+        ProjectStatus::Running => 0,
+        ProjectStatus::Stopped => 1,
+        ProjectStatus::NotCreated => 2,
+        ProjectStatus::Error => 3,
+    }
 }
 
 fn capitalize_word(word: &str) -> String {
@@ -347,6 +407,52 @@ mod tests {
         assert_eq!(
             rows[1].spec_summary(),
             "Specs unavailable | ssh command failed"
+        );
+    }
+
+    #[test]
+    fn load_project_rows_sorts_running_projects_first() {
+        let client = FakeClient {
+            projects: Ok(vec![
+                ProjectSummary {
+                    name: "zeta".to_string(),
+                    status: ProjectStatus::Stopped,
+                    ip: None,
+                },
+                ProjectSummary {
+                    name: "alpha".to_string(),
+                    status: ProjectStatus::Running,
+                    ip: None,
+                },
+                ProjectSummary {
+                    name: "beta".to_string(),
+                    status: ProjectStatus::Running,
+                    ip: None,
+                },
+            ]),
+            configs: HashMap::from([
+                (
+                    "zeta".to_string(),
+                    Ok(project_config("zeta", ProjectStatus::Stopped)),
+                ),
+                (
+                    "alpha".to_string(),
+                    Ok(project_config("alpha", ProjectStatus::Running)),
+                ),
+                (
+                    "beta".to_string(),
+                    Ok(project_config("beta", ProjectStatus::Running)),
+                ),
+            ]),
+        };
+
+        let rows = block_on(load_project_rows(Arc::new(client))).expect("rows should load");
+
+        assert_eq!(
+            rows.iter()
+                .map(|project| project.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["alpha", "beta", "zeta"]
         );
     }
 
