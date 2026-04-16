@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use sing_bridge::{CreateSpecRequest, ProjectRemoteTarget, SingBridge, SpecDocument};
+use sing_bridge::{CreateSpecRequest, ProjectRemoteTarget, SingBridge, SpecDocument, SpecStatus};
 
 use crate::{
     client::SingSpecClient,
@@ -89,6 +89,26 @@ impl RemoteSpecStore {
             .find_spec(spec_id)
             .cloned()
             .ok_or_else(|| anyhow!("updated spec `{spec_id}` was not found after refresh"))?;
+        Ok(SpecMutationResult { board, spec })
+    }
+
+    pub async fn update_status(
+        &self,
+        project: &str,
+        spec_id: &str,
+        status: SpecStatus,
+    ) -> Result<SpecMutationResult> {
+        let updated = self
+            .client
+            .update_spec_status(project, spec_id, status)
+            .await?;
+        let board = self.load_board(project).await?;
+        let spec = board.find_spec(&updated.spec.id).cloned().ok_or_else(|| {
+            anyhow!(
+                "updated spec `{}` was not found after refresh",
+                updated.spec.id
+            )
+        })?;
         Ok(SpecMutationResult { board, spec })
     }
 
@@ -177,14 +197,15 @@ mod tests {
     use pretty_assertions::assert_eq;
     use remote::{RemoteConnectionOptions, SshConnectionOptions};
     use sing_bridge::{
-        CreateSpecRequest, CreateSpecResult, ProjectRemoteTarget, SpecDocument, SpecRecord,
-        SpecStatus,
+        CreateSpecRequest, CreateSpecResult, ProjectRemoteTarget, ProjectStatus, ProjectSummary,
+        SpecDocument, SpecRecord, SpecStatus, UpdateSpecStatusResult,
     };
 
     use super::RemoteSpecStore;
     use crate::{
         client::SingSpecClient,
         file_system::SpecFileSystem,
+        index::SpecIndexDocument,
         types::{OptionalValue, SpecMetadataPatch},
     };
 
@@ -231,6 +252,14 @@ mod tests {
 
     #[async_trait]
     impl SingSpecClient for FakeClient {
+        async fn list_projects(&self) -> Result<Vec<ProjectSummary>> {
+            Ok(vec![ProjectSummary {
+                name: self.target.project.clone(),
+                status: ProjectStatus::Running,
+                ip: Some(self.target.container_ip.clone()),
+            }])
+        }
+
         async fn project_remote_target(&self, _project: &str) -> Result<ProjectRemoteTarget> {
             Ok(self.target.clone())
         }
@@ -346,6 +375,48 @@ mod tests {
                 spec_path: spec_path.display().to_string(),
             })
         }
+
+        async fn update_spec_status(
+            &self,
+            project: &str,
+            spec_id: &str,
+            status: SpecStatus,
+        ) -> Result<UpdateSpecStatusResult> {
+            let index_path = self.target.workspace_root.join("specs").join("index.yaml");
+
+            {
+                let state = &mut *self.state.lock().unwrap();
+                let existing = state.files.get(&index_path).cloned();
+                let mut document = SpecIndexDocument::parse(existing.as_deref())?;
+                document.update_spec(
+                    spec_id,
+                    &SpecMetadataPatch {
+                        status: Some(status),
+                        ..Default::default()
+                    },
+                )?;
+                state.files.insert(index_path.clone(), document.render()?);
+            }
+
+            let board = RemoteSpecStore::new(
+                Arc::new(self.clone()),
+                Arc::new(MemorySpecFileSystem {
+                    state: self.state.clone(),
+                }),
+            )
+            .load_board(project)
+            .await?;
+            let spec = board
+                .find_spec(spec_id)
+                .cloned()
+                .ok_or_else(|| anyhow!("missing spec `{spec_id}` after status update"))?;
+
+            Ok(UpdateSpecStatusResult {
+                name: self.target.project.clone(),
+                spec: spec.spec,
+                summary: board.summary,
+            })
+        }
     }
 
     fn fixture_store(index_yaml: &str) -> RemoteSpecStore {
@@ -459,5 +530,29 @@ specs:
             PathBuf::from("specs/new-spec/spec.md")
         );
         assert_eq!(document.content.as_deref(), Some("# New Spec\n"));
+    }
+
+    #[test]
+    fn update_status_refreshes_summary_and_unblocks_dependency() {
+        let store = fixture_store(
+            r#"
+specs:
+  - id: alpha
+    title: Alpha
+    status: pending
+  - id: beta
+    title: Beta
+    status: pending
+    depends_on:
+      - alpha
+"#,
+        );
+
+        let result = block_on(store.update_status("demo", "alpha", SpecStatus::Done)).unwrap();
+
+        assert_eq!(result.spec.spec.status, SpecStatus::Done);
+        assert_eq!(result.board.summary.ready_count, 1);
+        assert_eq!(result.board.summary.blocked_count, 0);
+        assert_eq!(result.board.summary.next_ready_id.as_deref(), Some("beta"));
     }
 }
