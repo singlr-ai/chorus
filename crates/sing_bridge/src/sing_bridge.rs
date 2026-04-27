@@ -1,3 +1,4 @@
+mod api;
 mod bridge;
 mod client_config;
 mod command;

@@ -3,8 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use sing_bridge::{
-    CreateSpecRequest, CreateSpecResult, ProjectRemoteTarget, ProjectSummary, SingBridge,
-    SpecDocument, SpecStatus, UpdateSpecStatusResult,
+    AgentLog, AgentReport, CreateSpecRequest, CreateSpecResult, DispatchRequest, DispatchResult,
+    ProjectAgentStatus, ProjectRemoteTarget, ProjectSummary, SingBridge, SpecDocument, SpecStatus,
+    StopAgentResult, UpdateSpecStatusResult,
 };
 
 #[async_trait]
@@ -23,6 +24,11 @@ pub trait SingSpecClient: Send + Sync {
         spec_id: &str,
         status: SpecStatus,
     ) -> Result<UpdateSpecStatusResult>;
+    async fn dispatch(&self, project: &str, request: DispatchRequest) -> Result<DispatchResult>;
+    async fn agent_status(&self, project: &str) -> Result<ProjectAgentStatus>;
+    async fn agent_log(&self, project: &str, tail: u32) -> Result<AgentLog>;
+    async fn stop_agent(&self, project: &str) -> Result<StopAgentResult>;
+    async fn agent_report(&self, project: &str) -> Result<AgentReport>;
 }
 
 #[async_trait]
@@ -54,6 +60,26 @@ impl SingSpecClient for SingBridge {
         status: SpecStatus,
     ) -> Result<UpdateSpecStatusResult> {
         Ok(SingBridge::update_spec_status(self, project, spec_id, status).await?)
+    }
+
+    async fn dispatch(&self, project: &str, request: DispatchRequest) -> Result<DispatchResult> {
+        Ok(SingBridge::dispatch(self, project, request).await?)
+    }
+
+    async fn agent_status(&self, project: &str) -> Result<ProjectAgentStatus> {
+        Ok(SingBridge::project_agent_status(self, project).await?)
+    }
+
+    async fn agent_log(&self, project: &str, tail: u32) -> Result<AgentLog> {
+        Ok(SingBridge::project_agent_log(self, project, tail).await?)
+    }
+
+    async fn stop_agent(&self, project: &str) -> Result<StopAgentResult> {
+        Ok(SingBridge::stop_project_agent(self, project).await?)
+    }
+
+    async fn agent_report(&self, project: &str) -> Result<AgentReport> {
+        Ok(SingBridge::project_agent_report(self, project).await?)
     }
 }
 

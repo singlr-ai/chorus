@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use remote::RemoteConnectionOptions;
-use sing_bridge::{BoardSpecRecord, SpecBoardSummary, SpecStatus};
+use sing_bridge::{BoardSpecRecord, DispatchResult, SpecBoardSummary, SpecStatus};
 
 pub type SpecEntry = BoardSpecRecord;
 
@@ -57,4 +57,11 @@ pub struct SpecDocumentState {
 pub struct SpecMutationResult {
     pub board: SpecBoardState,
     pub spec: SpecEntry,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpecDispatchResult {
+    pub board: SpecBoardState,
+    pub dispatch: DispatchResult,
+    pub selected_spec: Option<SpecEntry>,
 }

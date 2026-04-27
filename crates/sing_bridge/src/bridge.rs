@@ -5,20 +5,20 @@ use std::time::Duration;
 use remote::{RemoteConnectionOptions, SshConnectionOptions};
 use serde::de::DeserializeOwned;
 
+use crate::api::SingApiClient;
 use crate::client_config::SingClientConfig;
 use crate::command::{CommandRequest, SingCommandRunner, SshSingCommandRunner};
 use crate::error::SingBridgeError;
 use crate::models::{
-    AgentLog, AgentSummaryList, CreateSpecRequest, CreateSpecResult, DispatchRequest,
+    AgentLog, AgentReport, AgentSummaryList, CreateSpecRequest, CreateSpecResult, DispatchRequest,
     DispatchResult, HostStatus, ProjectAgentStatus, ProjectConfig, ProjectRemoteTarget,
     ProjectServiceList, ProjectServiceLogs, ProjectStartResult, ProjectStatus, ProjectStopResult,
-    ProjectSummary, SpecBoard, SpecDocument, SpecStatus, UpdateSpecStatusResult,
+    ProjectSummary, SpecBoard, SpecDocument, SpecStatus, StopAgentResult, UpdateSpecStatusResult,
 };
 use crate::validation;
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(20);
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(60);
-const DISPATCH_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone)]
 pub struct SingBridge {
@@ -270,24 +270,9 @@ impl SingBridge {
             validation::spec_id(spec_id)?;
         }
 
-        let mut args = vec!["dispatch".to_string(), project.to_string()];
-        if let Some(spec_id) = request.spec_id {
-            args.push("--spec".to_string());
-            args.push(spec_id);
-        }
-        if !request.background {
-            args.push("--background=false".to_string());
-        }
-        if request.dry_run {
-            args.push("--dry-run".to_string());
-        }
-
-        self.run_json(
-            "dispatch",
-            args.iter().map(String::as_str).collect(),
-            DISPATCH_TIMEOUT,
-        )
-        .await
+        SingApiClient::new(self.host_options.clone())
+            .dispatch(project, request)
+            .await
     }
 
     pub async fn list_agents(&self) -> Result<AgentSummaryList, SingBridgeError> {
@@ -300,12 +285,9 @@ impl SingBridge {
         project: &str,
     ) -> Result<ProjectAgentStatus, SingBridgeError> {
         validation::project_name(project)?;
-        self.run_json(
-            "agent status",
-            vec!["agent", "status", project],
-            QUERY_TIMEOUT,
-        )
-        .await
+        SingApiClient::new(self.host_options.clone())
+            .agent_status(project)
+            .await
     }
 
     pub async fn project_agent_log(
@@ -314,12 +296,29 @@ impl SingBridge {
         tail: u32,
     ) -> Result<AgentLog, SingBridgeError> {
         validation::project_name(project)?;
-        self.run_json(
-            "agent log",
-            vec!["agent", "log", project, "--tail", &tail.to_string()],
-            QUERY_TIMEOUT,
-        )
-        .await
+        SingApiClient::new(self.host_options.clone())
+            .agent_log(project, tail)
+            .await
+    }
+
+    pub async fn stop_project_agent(
+        &self,
+        project: &str,
+    ) -> Result<StopAgentResult, SingBridgeError> {
+        validation::project_name(project)?;
+        SingApiClient::new(self.host_options.clone())
+            .stop_agent(project)
+            .await
+    }
+
+    pub async fn project_agent_report(
+        &self,
+        project: &str,
+    ) -> Result<AgentReport, SingBridgeError> {
+        validation::project_name(project)?;
+        SingApiClient::new(self.host_options.clone())
+            .agent_report(project)
+            .await
     }
 
     fn jump_target(&self) -> String {

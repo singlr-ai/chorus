@@ -11,7 +11,10 @@ use gpui::{
 };
 use recent_projects::open_remote_project;
 use serde::{Deserialize, Serialize};
-use sing_bridge::{CreateSpecRequest, ProjectStatus, ProjectSummary, SpecStatus};
+use sing_bridge::{
+    AgentLog, AgentReport, CreateSpecRequest, ProjectAgentStatus, ProjectStatus, ProjectSummary,
+    SpecStatus, StopAgentResult,
+};
 use ui::{
     Button, ButtonStyle, Chip, Color, Icon, IconButtonShape, IconName, IconSize, Indicator, Label,
     LabelSize, TintColor, Tooltip, prelude::*,
@@ -77,6 +80,11 @@ struct LoadedBoardState {
 enum PendingSpecAction {
     Open(String),
     Move(String, SpecStatus),
+    Dispatch(Option<String>),
+    AgentStatus,
+    AgentLog,
+    StopAgent,
+    AgentReport,
     Create,
 }
 
@@ -509,6 +517,159 @@ impl SingSpecBoardPanel {
         }
     }
 
+    fn dispatch_next_ready(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.dispatch_spec(None, window, cx);
+    }
+
+    fn dispatch_selected_spec(
+        &mut self,
+        spec_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.dispatch_spec(Some(spec_id), window, cx);
+    }
+
+    fn dispatch_spec(
+        &mut self,
+        spec_id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project) = self.selected_project.clone() else {
+            return;
+        };
+        if self.pending_action.is_some() {
+            return;
+        }
+
+        self.pending_action = Some(PendingSpecAction::Dispatch(spec_id.clone()));
+        cx.notify();
+
+        cx.spawn_in(window, async move |panel, cx| {
+            let result = async {
+                let store = panel.update_in(cx, |panel, _, _| panel.store())??;
+                store.dispatch_spec(&project, spec_id).await
+            }
+            .await;
+
+            panel
+                .update_in(cx, |panel, _, cx| {
+                    panel.finish_dispatch_spec(project, result, cx);
+                })
+                .ok();
+        })
+        .detach();
+    }
+
+    fn finish_dispatch_spec(
+        &mut self,
+        project: String,
+        result: Result<crate::SpecDispatchResult>,
+        cx: &mut Context<Self>,
+    ) {
+        self.pending_action = None;
+
+        match result {
+            Ok(result) => {
+                let selected_spec = result.selected_spec.map(|spec| spec.spec.id);
+                let message = if let Some(spec_id) = selected_spec.as_ref() {
+                    format!("Dispatched spec {spec_id}")
+                } else if let Some(reason) = result.dispatch.reason.as_ref() {
+                    format!("No spec dispatched: {reason}")
+                } else {
+                    "No spec dispatched".to_string()
+                };
+                self.last_error = None;
+                self.selected_project = Some(project);
+                self.board = Some(result.board);
+                self.selected_spec = selected_spec;
+                self.last_refreshed_at = Some(Instant::now());
+                self.serialize(cx);
+                self.show_toast(message, cx);
+                cx.notify();
+            }
+            Err(error) => self.show_action_error(error.to_string(), cx),
+        }
+    }
+
+    fn show_agent_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.run_agent_action(PendingSpecAction::AgentStatus, window, cx);
+    }
+
+    fn show_agent_log(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.run_agent_action(PendingSpecAction::AgentLog, window, cx);
+    }
+
+    fn stop_agent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.run_agent_action(PendingSpecAction::StopAgent, window, cx);
+    }
+
+    fn show_agent_report(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.run_agent_action(PendingSpecAction::AgentReport, window, cx);
+    }
+
+    fn run_agent_action(
+        &mut self,
+        action: PendingSpecAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project) = self.selected_project.clone() else {
+            return;
+        };
+        if self.pending_action.is_some() {
+            return;
+        }
+
+        self.pending_action = Some(action.clone());
+        cx.notify();
+
+        cx.spawn_in(window, async move |panel, cx| {
+            let result = async {
+                let store = panel.update_in(cx, |panel, _, _| panel.store())??;
+                match action {
+                    PendingSpecAction::AgentStatus => {
+                        let status = store.agent_status(&project).await?;
+                        Ok(format_agent_status(&status))
+                    }
+                    PendingSpecAction::AgentLog => {
+                        let log = store.agent_log(&project, 200).await?;
+                        Ok(format_agent_log(&log))
+                    }
+                    PendingSpecAction::StopAgent => {
+                        let stopped = store.stop_agent(&project).await?;
+                        Ok(format_stop_agent(&stopped))
+                    }
+                    PendingSpecAction::AgentReport => {
+                        let report = store.agent_report(&project).await?;
+                        Ok(format_agent_report(&report))
+                    }
+                    _ => Err(anyhow!("agent action runner received a non-agent action")),
+                }
+            }
+            .await;
+
+            panel
+                .update_in(cx, |panel, _, cx| panel.finish_agent_action(result, cx))
+                .ok();
+        })
+        .detach();
+    }
+
+    fn finish_agent_action(&mut self, result: Result<String>, cx: &mut Context<Self>) {
+        self.pending_action = None;
+
+        match result {
+            Ok(message) => {
+                self.last_error = None;
+                self.show_toast(message, cx);
+                cx.notify();
+            }
+            Err(error) => self.show_action_error(error.to_string(), cx),
+        }
+    }
+
     fn move_selected_spec(
         &mut self,
         target_status: SpecStatus,
@@ -600,6 +761,16 @@ impl SingSpecBoardPanel {
         )
     }
 
+    fn is_dispatching(&self, spec_id: Option<&str>) -> bool {
+        match (&self.pending_action, spec_id) {
+            (Some(PendingSpecAction::Dispatch(Some(pending_spec))), Some(spec_id)) => {
+                pending_spec == spec_id
+            }
+            (Some(PendingSpecAction::Dispatch(None)), None) => true,
+            _ => false,
+        }
+    }
+
     fn is_creating(&self) -> bool {
         self.pending_action == Some(PendingSpecAction::Create)
     }
@@ -663,6 +834,108 @@ impl SingSpecBoardPanel {
                     .child(
                         h_flex()
                             .gap_2()
+                            .child(
+                                Button::new("sing-spec-dispatch-next", "Dispatch next")
+                                    .style(ButtonStyle::Filled)
+                                    .label_size(LabelSize::Small)
+                                    .loading(self.is_dispatching(None))
+                                    .disabled(
+                                        self.selected_project.is_none()
+                                            || self.pending_action.is_some()
+                                                && !self.is_dispatching(None)
+                                            || self.board.as_ref().map_or(true, |board| {
+                                                board.summary.ready_count == 0
+                                            }),
+                                    )
+                                    .tooltip(Tooltip::text("Dispatch the next ready spec"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.dispatch_next_ready(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("sing-spec-agent-status", "Agent status")
+                                    .style(ButtonStyle::Outlined)
+                                    .label_size(LabelSize::Small)
+                                    .loading(matches!(
+                                        self.pending_action,
+                                        Some(PendingSpecAction::AgentStatus)
+                                    ))
+                                    .disabled(
+                                        self.selected_project.is_none()
+                                            || self.pending_action.is_some()
+                                                && !matches!(
+                                                    self.pending_action,
+                                                    Some(PendingSpecAction::AgentStatus)
+                                                ),
+                                    )
+                                    .tooltip(Tooltip::text("Show active agent status"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.show_agent_status(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("sing-spec-agent-log", "Logs")
+                                    .style(ButtonStyle::Outlined)
+                                    .label_size(LabelSize::Small)
+                                    .loading(matches!(
+                                        self.pending_action,
+                                        Some(PendingSpecAction::AgentLog)
+                                    ))
+                                    .disabled(
+                                        self.selected_project.is_none()
+                                            || self.pending_action.is_some()
+                                                && !matches!(
+                                                    self.pending_action,
+                                                    Some(PendingSpecAction::AgentLog)
+                                                ),
+                                    )
+                                    .tooltip(Tooltip::text("Show recent agent log lines"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.show_agent_log(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("sing-spec-agent-report", "Report")
+                                    .style(ButtonStyle::Outlined)
+                                    .label_size(LabelSize::Small)
+                                    .loading(matches!(
+                                        self.pending_action,
+                                        Some(PendingSpecAction::AgentReport)
+                                    ))
+                                    .disabled(
+                                        self.selected_project.is_none()
+                                            || self.pending_action.is_some()
+                                                && !matches!(
+                                                    self.pending_action,
+                                                    Some(PendingSpecAction::AgentReport)
+                                                ),
+                                    )
+                                    .tooltip(Tooltip::text("Show current agent report"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.show_agent_report(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("sing-spec-agent-stop", "Stop agent")
+                                    .style(ButtonStyle::Tinted(TintColor::Warning))
+                                    .label_size(LabelSize::Small)
+                                    .loading(matches!(
+                                        self.pending_action,
+                                        Some(PendingSpecAction::StopAgent)
+                                    ))
+                                    .disabled(
+                                        self.selected_project.is_none()
+                                            || self.pending_action.is_some()
+                                                && !matches!(
+                                                    self.pending_action,
+                                                    Some(PendingSpecAction::StopAgent)
+                                                ),
+                                    )
+                                    .tooltip(Tooltip::text("Stop the active agent"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.stop_agent(window, cx);
+                                    })),
+                            )
                             .child(
                                 Button::new("sing-spec-new", "New spec")
                                     .style(ButtonStyle::Filled)
@@ -1125,10 +1398,40 @@ impl SingSpecBoardPanel {
                                 .disabled(
                                     self.pending_action.is_some() && !self.is_opening(&spec_id),
                                 )
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.open_spec(project.clone(), spec_id.clone(), window, cx);
-                                })),
+                                .on_click({
+                                    let project = project.clone();
+                                    let spec_id = spec_id.clone();
+                                    cx.listener(move |this, _, window, cx| {
+                                        this.open_spec(
+                                            project.clone(),
+                                            spec_id.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    })
+                                }),
                         )
+                        .child({
+                            let spec_id = spec_id.clone();
+                            let blocked = spec.blocked;
+                            Button::new("sing-spec-dispatch-selected", "Dispatch")
+                                .style(ButtonStyle::Filled)
+                                .label_size(LabelSize::Small)
+                                .loading(self.is_dispatching(Some(&spec_id)))
+                                .disabled(
+                                    blocked
+                                        || self.pending_action.is_some()
+                                            && !self.is_dispatching(Some(&spec_id)),
+                                )
+                                .tooltip(Tooltip::text(if blocked {
+                                    "Spec is blocked by unmet dependencies"
+                                } else {
+                                    "Dispatch this spec to the configured agent"
+                                }))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.dispatch_selected_spec(spec_id.clone(), window, cx);
+                                }))
+                        })
                         .children(self.render_move_buttons(spec, cx)),
                 )
                 .into_any_element(),
@@ -1351,6 +1654,66 @@ fn summary_badge(label: impl Into<String>, color: Color) -> Chip {
     Chip::new(label.into())
         .label_size(LabelSize::XSmall)
         .label_color(color)
+}
+
+fn format_agent_status(status: &ProjectAgentStatus) -> String {
+    let state = if status.agent_running {
+        "Agent running"
+    } else {
+        "Agent idle"
+    };
+    let mut parts = vec![state.to_string()];
+    if let Some(task) = status.task.as_deref() {
+        parts.push(format!("task {task}"));
+    }
+    if let Some(branch) = status.branch.as_deref() {
+        parts.push(format!("branch {branch}"));
+    }
+    if let Some(pid) = status.pid {
+        parts.push(format!("pid {pid}"));
+    }
+    parts.join(" | ")
+}
+
+fn format_agent_log(log: &AgentLog) -> String {
+    if let Some(error) = log.error.as_deref() {
+        return format!("Agent log unavailable: {error}");
+    }
+    if log.lines.is_empty() {
+        return "Agent log is empty".to_string();
+    }
+    let mut lines = log.lines.iter().rev().take(3).cloned().collect::<Vec<_>>();
+    lines.reverse();
+    format!("Agent log | {}", lines.join(" | "))
+}
+
+fn format_stop_agent(result: &StopAgentResult) -> String {
+    if result.stopped {
+        if let Some(pid) = result.pid {
+            return format!("Stopped agent pid {pid}");
+        }
+        return "Stopped agent".to_string();
+    }
+    result
+        .reason
+        .as_ref()
+        .map(|reason| format!("No agent stopped: {reason}"))
+        .unwrap_or_else(|| "No agent stopped".to_string())
+}
+
+fn format_agent_report(report: &AgentReport) -> String {
+    let mut parts = vec![format!("Agent {}", report.session_status)];
+    if let Some(duration) = report.duration.as_deref() {
+        parts.push(format!("duration {duration}"));
+    }
+    if let Some(branch) = report.branch.as_deref() {
+        parts.push(format!("branch {branch}"));
+    }
+    parts.push(format!("commits {}", report.commits_since_launch));
+    if report.guardrail_triggered {
+        parts.push("guardrail triggered".to_string());
+    }
+    parts.join(" | ")
 }
 
 fn spec_status_label(status: SpecStatus) -> &'static str {

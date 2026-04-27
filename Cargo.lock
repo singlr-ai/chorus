@@ -16447,10 +16447,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "futures 0.3.32",
+ "http_client",
  "indexmap 2.11.4",
  "log",
  "pretty_assertions",
  "remote",
+ "reqwest_client",
  "serde",
  "serde_json",
  "serde_yaml",

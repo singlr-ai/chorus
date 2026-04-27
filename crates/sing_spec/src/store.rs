@@ -4,14 +4,18 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use sing_bridge::{CreateSpecRequest, ProjectRemoteTarget, SingBridge, SpecDocument, SpecStatus};
+use sing_bridge::{
+    AgentLog, AgentReport, CreateSpecRequest, DispatchRequest, ProjectAgentStatus,
+    ProjectRemoteTarget, SingBridge, SpecDocument, SpecStatus, StopAgentResult,
+};
 
 use crate::{
     client::SingSpecClient,
     file_system::{SpecFileSystem, SshSpecFileSystem},
     index::{SpecIndexDocument, compute_board},
     types::{
-        SpecBoardState, SpecDocumentState, SpecMetadataPatch, SpecMutationResult, SpecOpenTarget,
+        SpecBoardState, SpecDispatchResult, SpecDocumentState, SpecMetadataPatch,
+        SpecMutationResult, SpecOpenTarget,
     },
 };
 
@@ -90,6 +94,49 @@ impl RemoteSpecStore {
             .cloned()
             .ok_or_else(|| anyhow!("updated spec `{spec_id}` was not found after refresh"))?;
         Ok(SpecMutationResult { board, spec })
+    }
+
+    pub async fn dispatch_spec(
+        &self,
+        project: &str,
+        spec_id: Option<String>,
+    ) -> Result<SpecDispatchResult> {
+        let dispatch = self
+            .client
+            .dispatch(
+                project,
+                DispatchRequest {
+                    spec_id,
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let board = self.load_board(project).await?;
+        let selected_spec = dispatch
+            .spec
+            .as_ref()
+            .and_then(|spec| board.find_spec(&spec.id).cloned());
+        Ok(SpecDispatchResult {
+            board,
+            dispatch,
+            selected_spec,
+        })
+    }
+
+    pub async fn agent_status(&self, project: &str) -> Result<ProjectAgentStatus> {
+        self.client.agent_status(project).await
+    }
+
+    pub async fn agent_log(&self, project: &str, tail: u32) -> Result<AgentLog> {
+        self.client.agent_log(project, tail).await
+    }
+
+    pub async fn stop_agent(&self, project: &str) -> Result<StopAgentResult> {
+        self.client.stop_agent(project).await
+    }
+
+    pub async fn agent_report(&self, project: &str) -> Result<AgentReport> {
+        self.client.agent_report(project).await
     }
 
     pub async fn update_status(
@@ -197,8 +244,10 @@ mod tests {
     use pretty_assertions::assert_eq;
     use remote::{RemoteConnectionOptions, SshConnectionOptions};
     use sing_bridge::{
-        CreateSpecRequest, CreateSpecResult, ProjectRemoteTarget, ProjectStatus, ProjectSummary,
-        SpecDocument, SpecRecord, SpecStatus, UpdateSpecStatusResult,
+        AgentLog, AgentReport, CreateSpecRequest, CreateSpecResult, DispatchRequest,
+        DispatchResult, DispatchedSpec, ProjectAgentStatus, ProjectRemoteTarget, ProjectStatus,
+        ProjectSummary, SpecDocument, SpecRecord, SpecStatus, StopAgentResult,
+        UpdateSpecStatusResult,
     };
 
     use super::RemoteSpecStore;
@@ -373,6 +422,93 @@ mod tests {
                     branch: request.branch,
                 },
                 spec_path: spec_path.display().to_string(),
+            })
+        }
+
+        async fn dispatch(
+            &self,
+            _project: &str,
+            request: DispatchRequest,
+        ) -> Result<DispatchResult> {
+            let spec_id = request.spec_id.unwrap_or_else(|| "setup".to_string());
+            let index_path = self.target.workspace_root.join("specs").join("index.yaml");
+            {
+                let state = &mut *self.state.lock().unwrap();
+                let existing = state.files.get(&index_path).cloned();
+                let mut document = SpecIndexDocument::parse(existing.as_deref())?;
+                document.update_spec(
+                    &spec_id,
+                    &SpecMetadataPatch {
+                        status: Some(SpecStatus::InProgress),
+                        ..Default::default()
+                    },
+                )?;
+                state.files.insert(index_path, document.render()?);
+            }
+            Ok(DispatchResult {
+                name: self.target.project.clone(),
+                dispatched: true,
+                reason: None,
+                spec: Some(DispatchedSpec {
+                    id: spec_id,
+                    title: "Setup".to_string(),
+                    status: SpecStatus::InProgress,
+                    branch: None,
+                }),
+                agent: None,
+                snapshot: Some(String::new()),
+                branch_created: false,
+            })
+        }
+
+        async fn agent_status(&self, _project: &str) -> Result<ProjectAgentStatus> {
+            Ok(ProjectAgentStatus {
+                name: self.target.project.clone(),
+                agent_running: true,
+                pid: Some(42),
+                task: Some("setup".to_string()),
+                started_at: Some("2026-04-27T00:00:00Z".to_string()),
+                branch: Some("feat/setup".to_string()),
+                log_path: Some("/tmp/agent.log".to_string()),
+                commits_since_launch: Some(1),
+                last_commit_minutes_ago: Some(2),
+                tasks: None,
+            })
+        }
+
+        async fn agent_log(&self, _project: &str, _tail: u32) -> Result<AgentLog> {
+            Ok(AgentLog {
+                name: self.target.project.clone(),
+                lines: vec!["agent started".to_string(), "agent running".to_string()],
+                error: None,
+            })
+        }
+
+        async fn stop_agent(&self, _project: &str) -> Result<StopAgentResult> {
+            Ok(StopAgentResult {
+                name: self.target.project.clone(),
+                stopped: true,
+                reason: None,
+                pid: Some(42),
+            })
+        }
+
+        async fn agent_report(&self, _project: &str) -> Result<AgentReport> {
+            Ok(AgentReport {
+                name: self.target.project.clone(),
+                session_status: "running".to_string(),
+                started_at: Some("2026-04-27T00:00:00Z".to_string()),
+                ended_at: None,
+                duration: Some("5m".to_string()),
+                branch: Some("feat/setup".to_string()),
+                specs: Vec::new(),
+                commits_since_launch: 1,
+                last_commit_minutes_ago: Some(2),
+                guardrail_triggered: false,
+                guardrail_reason: None,
+                guardrail_action: None,
+                rolled_back: false,
+                rollback_snapshot: None,
             })
         }
 
@@ -554,5 +690,28 @@ specs:
         assert_eq!(result.board.summary.ready_count, 1);
         assert_eq!(result.board.summary.blocked_count, 0);
         assert_eq!(result.board.summary.next_ready_id.as_deref(), Some("beta"));
+    }
+    #[test]
+    fn dispatch_spec_refreshes_board_and_selected_spec() {
+        let store = fixture_store(
+            r#"
+specs:
+  - id: setup
+    title: Setup
+    status: pending
+"#,
+        );
+
+        let result = block_on(store.dispatch_spec("demo", Some("setup".to_string()))).unwrap();
+
+        assert!(result.dispatch.dispatched);
+        assert_eq!(
+            result.selected_spec.as_ref().map(|spec| spec.spec.status),
+            Some(SpecStatus::InProgress)
+        );
+        assert_eq!(
+            result.board.find_spec("setup").map(|spec| spec.spec.status),
+            Some(SpecStatus::InProgress)
+        );
     }
 }

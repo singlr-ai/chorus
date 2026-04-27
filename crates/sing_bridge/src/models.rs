@@ -328,12 +328,46 @@ pub struct UpdateSpecStatusResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchedSpec {
+    pub id: String,
+    pub title: String,
+    pub status: SpecStatus,
+    #[serde(default)]
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectAgentStatusSummary {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub mode: DispatchMode,
+    pub running: bool,
+    #[serde(default)]
+    pub pid: Option<i32>,
+    #[serde(default)]
+    pub task: Option<String>,
+    #[serde(default)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub log_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DispatchResult {
     pub name: String,
-    pub spec_id: String,
-    pub spec_title: String,
-    pub mode: DispatchMode,
-    pub task: String,
+    pub dispatched: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub spec: Option<DispatchedSpec>,
+    #[serde(default)]
+    pub agent: Option<ProjectAgentStatusSummary>,
+    #[serde(default)]
+    pub snapshot: Option<String>,
+    #[serde(default)]
+    pub branch_created: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -383,6 +417,43 @@ pub struct AgentLog {
     pub lines: Vec<String>,
     #[serde(default)]
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StopAgentResult {
+    pub name: String,
+    pub stopped: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub pid: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentReport {
+    pub name: String,
+    pub session_status: String,
+    #[serde(default)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    pub ended_at: Option<String>,
+    #[serde(default)]
+    pub duration: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub specs: Vec<BoardSpecRecord>,
+    pub commits_since_launch: u32,
+    #[serde(default)]
+    pub last_commit_minutes_ago: Option<u64>,
+    pub guardrail_triggered: bool,
+    #[serde(default)]
+    pub guardrail_reason: Option<String>,
+    #[serde(default)]
+    pub guardrail_action: Option<String>,
+    pub rolled_back: bool,
+    #[serde(default)]
+    pub rollback_snapshot: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
