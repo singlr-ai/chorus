@@ -74,17 +74,20 @@ struct Args {
     #[arg(short, long)]
     wait: bool,
     /// Add files to the currently open workspace
-    #[arg(short, long, overrides_with_all = ["new", "reuse", "existing"])]
+    #[arg(short, long, overrides_with_all = ["new", "reuse", "existing", "classic"])]
     add: bool,
     /// Create a new workspace
-    #[arg(short, long, overrides_with_all = ["add", "reuse", "existing"])]
+    #[arg(short, long, overrides_with_all = ["add", "reuse", "existing", "classic"])]
     new: bool,
     /// Reuse an existing window, replacing its workspace
-    #[arg(short, long, overrides_with_all = ["add", "new", "existing"])]
+    #[arg(short, long, overrides_with_all = ["add", "new", "existing", "classic"], hide = true)]
     reuse: bool,
     /// Open in existing Chorus window
-    #[arg(short = 'e', long = "existing", overrides_with_all = ["add", "new", "reuse"])]
+    #[arg(short = 'e', long = "existing", overrides_with_all = ["add", "new", "reuse", "classic"])]
     existing: bool,
+    /// Use the classic open behavior: new window for directories, reuse for files
+    #[arg(long, hide = true, overrides_with_all = ["add", "new", "reuse", "existing"])]
+    classic: bool,
     /// Sets a custom directory for all user data (e.g., database, extensions, logs).
     /// This overrides the default platform-specific data directory location:
     #[cfg_attr(target_os = "macos", doc = "`~/Library/Application Support/Chorus`.")]
@@ -545,15 +548,19 @@ fn main() -> Result<()> {
         IpcOneShotServer::<IpcHandshake>::new().context("Handshake before Chorus spawn")?;
     let url = format!("chorus-cli://{server_name}");
 
-    let open_new_workspace = if args.new {
-        Some(true)
+    let open_behavior = if args.new {
+        cli::OpenBehavior::AlwaysNew
     } else if args.add {
-        Some(false)
+        cli::OpenBehavior::Add
+    } else if args.existing {
+        cli::OpenBehavior::ExistingWindow
+    } else if args.classic {
+        cli::OpenBehavior::Classic
+    } else if args.reuse {
+        cli::OpenBehavior::Reuse
     } else {
-        None
+        cli::OpenBehavior::Default
     };
-
-    let force_existing_window = args.existing;
 
     let env = {
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -642,14 +649,6 @@ fn main() -> Result<()> {
         }
     }
 
-    // When only diff paths are provided (no regular paths), add the current
-    // working directory so the workspace opens with the right context.
-    if paths.is_empty() && urls.is_empty() && !diff_paths.is_empty() {
-        if let Ok(cwd) = env::current_dir() {
-            paths.push(cwd.to_string_lossy().into_owned());
-        }
-    }
-
     anyhow::ensure!(
         args.dev_server_token.is_none(),
         "Dev servers were removed in v0.157.x. Please upgrade to SSH remoting."
@@ -683,9 +682,7 @@ fn main() -> Result<()> {
                     diff_all: diff_all_mode,
                     wsl,
                     wait: args.wait,
-                    open_new_workspace,
-                    force_existing_window,
-                    reuse: args.reuse,
+                    open_behavior,
                     env,
                     user_data_dir: user_data_dir_for_thread,
                     dev_container: args.dev_container,
@@ -704,7 +701,7 @@ fn main() -> Result<()> {
                         }
                         CliResponse::PromptOpenBehavior => {
                             let behavior = prompt_open_behavior()
-                                .unwrap_or(cli::CliOpenBehavior::ExistingWindow);
+                                .unwrap_or(cli::CliBehaviorSetting::ExistingWindow);
                             tx.send(CliRequest::SetOpenBehavior { behavior })?;
                         }
                     }
@@ -803,7 +800,7 @@ fn anonymous_fd(path: &str) -> Option<fs::File> {
 /// Shows an interactive prompt asking the user to choose the default open
 /// behavior for `chorus <path>`. Returns `None` if the prompt cannot be shown
 /// (e.g. stdin is not a terminal) or the user cancels.
-fn prompt_open_behavior() -> Option<cli::CliOpenBehavior> {
+fn prompt_open_behavior() -> Option<cli::CliBehaviorSetting> {
     if !std::io::stdin().is_terminal() {
         return None;
     }
@@ -812,9 +809,9 @@ fn prompt_open_behavior() -> Option<cli::CliOpenBehavior> {
     let items = [
         format!(
             "Add to existing Chorus window ({})",
-            blue.apply_to("chorus -e")
+            blue.apply_to("chorus --existing")
         ),
-        format!("Open a new window ({})", blue.apply_to("chorus -n")),
+        format!("Open a new window ({})", blue.apply_to("chorus --classic")),
     ];
 
     let prompt = format!(
@@ -831,9 +828,9 @@ fn prompt_open_behavior() -> Option<cli::CliOpenBehavior> {
         .ok()?;
 
     Some(if selection == 0 {
-        cli::CliOpenBehavior::ExistingWindow
+        cli::CliBehaviorSetting::ExistingWindow
     } else {
-        cli::CliOpenBehavior::NewWindow
+        cli::CliBehaviorSetting::NewWindow
     })
 }
 
@@ -1240,7 +1237,9 @@ mod mac_os {
         string::kCFStringEncodingUTF8,
         url::{CFURL, CFURLCreateWithBytes},
     };
-    use core_services::{LSLaunchURLSpec, LSOpenFromURLSpec, kLSLaunchDefaults};
+    use core_services::{
+        LSLaunchURLSpec, LSOpenFromURLSpec, kLSLaunchDefaults, kLSLaunchDontSwitch,
+    };
     use serde::Deserialize;
     use std::{
         ffi::OsStr,
@@ -1339,7 +1338,7 @@ mod mac_os {
                                 appURL: app_url.as_concrete_TypeRef(),
                                 itemURLs: urls_to_open.as_concrete_TypeRef(),
                                 passThruParams: ptr::null(),
-                                launchFlags: kLSLaunchDefaults,
+                                launchFlags: kLSLaunchDefaults | kLSLaunchDontSwitch,
                                 asyncRefCon: ptr::null_mut(),
                             },
                             ptr::null_mut(),
