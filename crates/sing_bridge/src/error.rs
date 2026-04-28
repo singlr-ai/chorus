@@ -94,6 +94,18 @@ pub enum SingBridgeError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("sing API is unavailable: {message}")]
+    ApiUnavailable { message: String },
+    #[error("sing API request failed for {path}: {message}")]
+    ApiRequest { path: String, message: String },
+    #[error("sing API returned {status} for {path}: {code}: {message}")]
+    ApiFailure {
+        path: String,
+        status: u16,
+        code: String,
+        message: String,
+        action: Option<String>,
+    },
 }
 
 impl SingBridgeError {
@@ -111,6 +123,16 @@ impl SingBridgeError {
         Self::Command {
             command: command.into(),
             source,
+        }
+    }
+
+    pub(crate) fn api_request(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> SingBridgeError {
+        Self::ApiRequest {
+            path: path.into(),
+            message: message.into(),
         }
     }
 }

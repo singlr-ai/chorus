@@ -9,6 +9,8 @@ license = "GPL-3.0-or-later"
 path = "src/sing_bridge.rs"
 
 [dependencies]
+reqwest_client.workspace = true
+http_client.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 indexmap.workspace = true
