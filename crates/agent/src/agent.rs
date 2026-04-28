@@ -66,6 +66,10 @@ pub struct RulesLoadingError {
     pub message: SharedString,
 }
 
+pub trait NativeAgentToolProvider: Send + Sync {
+    fn tools(&self, project: Entity<Project>, cx: &mut App) -> Vec<Arc<dyn AnyAgentTool>>;
+}
+
 struct ProjectState {
     project: Entity<Project>,
     project_context: Entity<ProjectContext>,
@@ -263,6 +267,9 @@ pub struct NativeAgent {
     models: LanguageModels,
     prompt_store: Option<Entity<PromptStore>>,
     fs: Arc<dyn Fs>,
+    agent_id: AgentId,
+    telemetry_id: SharedString,
+    tool_provider: Option<Arc<dyn NativeAgentToolProvider>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -272,6 +279,28 @@ impl NativeAgent {
         templates: Arc<Templates>,
         prompt_store: Option<Entity<PromptStore>>,
         fs: Arc<dyn Fs>,
+        cx: &mut App,
+    ) -> Entity<NativeAgent> {
+        Self::new_with_tools(
+            thread_store,
+            templates,
+            prompt_store,
+            fs,
+            ZED_AGENT_ID.clone(),
+            "zed".into(),
+            None,
+            cx,
+        )
+    }
+
+    pub fn new_with_tools(
+        thread_store: Entity<ThreadStore>,
+        templates: Arc<Templates>,
+        prompt_store: Option<Entity<PromptStore>>,
+        fs: Arc<dyn Fs>,
+        agent_id: AgentId,
+        telemetry_id: SharedString,
+        tool_provider: Option<Arc<dyn NativeAgentToolProvider>>,
         cx: &mut App,
     ) -> Entity<NativeAgent> {
         log::debug!("Creating new NativeAgent");
@@ -294,6 +323,9 @@ impl NativeAgent {
                 models: LanguageModels::new(cx),
                 prompt_store,
                 fs,
+                agent_id,
+                telemetry_id,
+                tool_provider,
                 _subscriptions: subscriptions,
             }
         })
@@ -336,7 +368,11 @@ impl NativeAgent {
         ref_count: usize,
         cx: &mut Context<Self>,
     ) -> Entity<AcpThread> {
-        let connection = Rc::new(NativeAgentConnection(cx.entity()));
+        let connection = Rc::new(NativeAgentConnection::new_with_identity(
+            cx.entity(),
+            self.agent_id.clone(),
+            self.telemetry_id.clone(),
+        ));
 
         let thread = thread_handle.read(cx);
         let session_id = thread.id().clone();
@@ -371,6 +407,7 @@ impl NativeAgent {
 
         let weak = cx.weak_entity();
         let weak_thread = thread_handle.downgrade();
+        let tool_provider = self.tool_provider.clone();
         thread_handle.update(cx, |thread, cx| {
             thread.set_summarization_model(summarization_model, cx);
             thread.add_default_tools(
@@ -380,7 +417,12 @@ impl NativeAgent {
                     agent: weak,
                 }) as _,
                 cx,
-            )
+            );
+            if let Some(tool_provider) = tool_provider.as_ref() {
+                for tool in tool_provider.tools(project.clone(), cx) {
+                    thread.add_erased_tool(tool);
+                }
+            }
         });
 
         let subscriptions = vec![
@@ -1214,9 +1256,21 @@ impl NativeAgent {
 
 /// Wrapper struct that implements the AgentConnection trait
 #[derive(Clone)]
-pub struct NativeAgentConnection(pub Entity<NativeAgent>);
+pub struct NativeAgentConnection(pub Entity<NativeAgent>, AgentId, SharedString);
 
 impl NativeAgentConnection {
+    pub fn new(agent: Entity<NativeAgent>) -> Self {
+        Self(agent, ZED_AGENT_ID.clone(), "zed".into())
+    }
+
+    pub fn new_with_identity(
+        agent: Entity<NativeAgent>,
+        agent_id: AgentId,
+        telemetry_id: SharedString,
+    ) -> Self {
+        Self(agent, agent_id, telemetry_id)
+    }
+
     pub fn thread(&self, session_id: &acp::SessionId, cx: &App) -> Option<Entity<Thread>> {
         self.0
             .read(cx)
@@ -1514,11 +1568,11 @@ pub static ZED_AGENT_ID: LazyLock<AgentId> = LazyLock::new(|| AgentId::new("Zed 
 
 impl acp_thread::AgentConnection for NativeAgentConnection {
     fn agent_id(&self) -> AgentId {
-        ZED_AGENT_ID.clone()
+        self.1.clone()
     }
 
     fn telemetry_id(&self) -> SharedString {
-        "zed".into()
+        self.2.clone()
     }
 
     fn new_session(
@@ -2242,7 +2296,7 @@ mod internal_tests {
             cx.update(|cx| NativeAgent::new(thread_store, Templates::new(), None, fs.clone(), cx));
 
         // Creating a session registers the project and triggers context building.
-        let connection = NativeAgentConnection(agent.clone());
+        let connection = NativeAgentConnection::new(agent.clone());
         let _acp_thread = cx
             .update(|cx| {
                 Rc::new(connection).new_session(
@@ -2321,7 +2375,7 @@ mod internal_tests {
         let project = Project::test(fs.clone(), [], cx).await;
         let thread_store = cx.new(|cx| ThreadStore::new(cx));
         let connection =
-            NativeAgentConnection(cx.update(|cx| {
+            NativeAgentConnection::new(cx.update(|cx| {
                 NativeAgent::new(thread_store, Templates::new(), None, fs.clone(), cx)
             }));
 
@@ -2398,7 +2452,7 @@ mod internal_tests {
         // Create the agent and connection
         let agent =
             cx.update(|cx| NativeAgent::new(thread_store, Templates::new(), None, fs.clone(), cx));
-        let connection = NativeAgentConnection(agent.clone());
+        let connection = NativeAgentConnection::new(agent.clone());
 
         // Create a thread/session
         let acp_thread = cx
@@ -2495,7 +2549,7 @@ mod internal_tests {
         let thread_store = cx.new(|cx| ThreadStore::new(cx));
         let agent =
             cx.update(|cx| NativeAgent::new(thread_store, Templates::new(), None, fs.clone(), cx));
-        let connection = NativeAgentConnection(agent.clone());
+        let connection = NativeAgentConnection::new(agent.clone());
 
         let acp_thread = cx
             .update(|cx| {
@@ -2586,7 +2640,7 @@ mod internal_tests {
         let thread_store = cx.new(|cx| ThreadStore::new(cx));
         let agent =
             cx.update(|cx| NativeAgent::new(thread_store, Templates::new(), None, fs.clone(), cx));
-        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
 
         let acp_thread = cx
             .update(|cx| {
@@ -2639,7 +2693,7 @@ mod internal_tests {
         let agent = cx.update(|cx| {
             NativeAgent::new(thread_store.clone(), Templates::new(), None, fs.clone(), cx)
         });
-        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
 
         // Register a thinking model.
         let thinking_model = Arc::new(FakeLanguageModel::with_id_and_thinking(
@@ -2742,7 +2796,7 @@ mod internal_tests {
         let agent = cx.update(|cx| {
             NativeAgent::new(thread_store.clone(), Templates::new(), None, fs.clone(), cx)
         });
-        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
 
         // Register a model where id() != name(), like real Anthropic models
         // (e.g. id="claude-sonnet-4-5-thinking-latest", name="Claude Sonnet 4.5 Thinking").
@@ -2858,7 +2912,7 @@ mod internal_tests {
         let agent = cx.update(|cx| {
             NativeAgent::new(thread_store.clone(), Templates::new(), None, fs.clone(), cx)
         });
-        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
 
         let acp_thread = cx
             .update(|cx| {
@@ -3040,7 +3094,7 @@ mod internal_tests {
         let agent = cx.update(|cx| {
             NativeAgent::new(thread_store.clone(), Templates::new(), None, fs.clone(), cx)
         });
-        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
 
         let acp_thread = cx
             .update(|cx| {
@@ -3121,7 +3175,7 @@ mod internal_tests {
         let agent = cx.update(|cx| {
             NativeAgent::new(thread_store.clone(), Templates::new(), None, fs.clone(), cx)
         });
-        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
 
         let acp_thread = cx
             .update(|cx| {
@@ -3205,7 +3259,7 @@ mod internal_tests {
         let agent = cx.update(|cx| {
             NativeAgent::new(thread_store.clone(), Templates::new(), None, fs.clone(), cx)
         });
-        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
 
         let acp_thread = cx
             .update(|cx| {
@@ -3350,7 +3404,7 @@ mod internal_tests {
         let agent = cx.update(|cx| {
             NativeAgent::new(thread_store.clone(), Templates::new(), None, fs.clone(), cx)
         });
-        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
 
         let acp_thread = cx
             .update(|cx| {

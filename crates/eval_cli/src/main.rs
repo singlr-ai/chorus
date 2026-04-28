@@ -392,7 +392,7 @@ async fn run_agent(
         )
     });
 
-    let connection = Rc::new(NativeAgentConnection(agent.clone()));
+    let connection = Rc::new(NativeAgentConnection::new(agent.clone()));
     let acp_thread = match cx
         .update(|cx| {
             connection

@@ -266,6 +266,7 @@ pub enum Agent {
     #[default]
     #[serde(alias = "NativeAgent", alias = "TextThread")]
     NativeAgent,
+    SingOrchestrator,
     #[serde(alias = "Custom")]
     Custom {
         #[serde(rename = "name")]
@@ -279,6 +280,8 @@ impl From<AgentId> for Agent {
     fn from(id: AgentId) -> Self {
         if id.as_ref() == agent::ZED_AGENT_ID.as_ref() {
             Self::NativeAgent
+        } else if id.as_ref() == sing_orchestrator::SING_ORCHESTRATOR_AGENT_ID.as_ref() {
+            Self::SingOrchestrator
         } else {
             Self::Custom { id }
         }
@@ -289,6 +292,7 @@ impl Agent {
     pub fn id(&self) -> AgentId {
         match self {
             Self::NativeAgent => agent::ZED_AGENT_ID.clone(),
+            Self::SingOrchestrator => sing_orchestrator::SING_ORCHESTRATOR_AGENT_ID.clone(),
             Self::Custom { id } => id.clone(),
             #[cfg(any(test, feature = "test-support"))]
             Self::Stub => "stub".into(),
@@ -296,12 +300,13 @@ impl Agent {
     }
 
     pub fn is_native(&self) -> bool {
-        matches!(self, Self::NativeAgent)
+        matches!(self, Self::NativeAgent | Self::SingOrchestrator)
     }
 
     pub fn label(&self) -> SharedString {
         match self {
             Self::NativeAgent => "Zed Agent".into(),
+            Self::SingOrchestrator => "Sing Orchestrator".into(),
             Self::Custom { id, .. } => id.0.clone(),
             #[cfg(any(test, feature = "test-support"))]
             Self::Stub => "Stub Agent".into(),
@@ -311,6 +316,7 @@ impl Agent {
     pub fn icon(&self) -> Option<IconName> {
         match self {
             Self::NativeAgent => None,
+            Self::SingOrchestrator => Some(IconName::Sparkle),
             Self::Custom { .. } => Some(IconName::Sparkle),
             #[cfg(any(test, feature = "test-support"))]
             Self::Stub => None,
@@ -324,6 +330,10 @@ impl Agent {
     ) -> Rc<dyn agent_servers::AgentServer> {
         match self {
             Self::NativeAgent => Rc::new(agent::NativeAgentServer::new(fs, thread_store)),
+            Self::SingOrchestrator => Rc::new(sing_orchestrator::SingOrchestratorServer::new(
+                fs,
+                thread_store,
+            )),
             Self::Custom { id: name } => {
                 Rc::new(agent_servers::CustomAgentServer::new(name.clone()))
             }
@@ -907,6 +917,10 @@ mod tests {
             Agent::Custom {
                 id: "my-agent".into(),
             },
+        );
+        assert_eq!(
+            serde_json::from_str::<Agent>(r#""sing_orchestrator""#).unwrap(),
+            Agent::SingOrchestrator,
         );
     }
 }

@@ -1581,12 +1581,16 @@ impl Thread {
     }
 
     pub fn add_tool<T: AgentTool>(&mut self, tool: T) {
+        self.add_erased_tool(tool.erase());
+    }
+
+    pub fn add_erased_tool(&mut self, tool: Arc<dyn AnyAgentTool>) {
+        let name = tool.name();
         debug_assert!(
-            !self.tools.contains_key(T::NAME),
-            "Duplicate tool name: {}",
-            T::NAME,
+            !self.tools.contains_key(&name),
+            "Duplicate tool name: {name}"
         );
-        self.tools.insert(T::NAME.into(), tool.erase());
+        self.tools.insert(name, tool);
     }
 
     #[cfg(any(test, feature = "test-support"))]

@@ -6,34 +6,65 @@ use agent_settings::{AgentSettings, language_model_to_selection};
 use anyhow::Result;
 use collections::HashSet;
 use fs::Fs;
-use gpui::{App, Entity, Task};
+use gpui::{App, Entity, SharedString, Task};
 use language_model::{LanguageModelId, LanguageModelProviderId, LanguageModelRegistry};
 use project::{AgentId, Project};
 use prompt_store::PromptStore;
 use settings::{LanguageModelSelection, Settings as _, update_settings_file};
 use util::ResultExt as _;
 
-use crate::{NativeAgent, NativeAgentConnection, ThreadStore, templates::Templates};
+use crate::{
+    NativeAgent, NativeAgentConnection, NativeAgentToolProvider, ThreadStore, templates::Templates,
+};
 
 #[derive(Clone)]
 pub struct NativeAgentServer {
     fs: Arc<dyn Fs>,
     thread_store: Entity<ThreadStore>,
+    agent_id: AgentId,
+    telemetry_id: SharedString,
+    logo: ui::IconName,
+    tool_provider: Option<Arc<dyn NativeAgentToolProvider>>,
 }
 
 impl NativeAgentServer {
     pub fn new(fs: Arc<dyn Fs>, thread_store: Entity<ThreadStore>) -> Self {
-        Self { fs, thread_store }
+        Self::new_with_tools(
+            fs,
+            thread_store,
+            crate::ZED_AGENT_ID.clone(),
+            "zed".into(),
+            ui::IconName::ZedAgent,
+            None,
+        )
+    }
+
+    pub fn new_with_tools(
+        fs: Arc<dyn Fs>,
+        thread_store: Entity<ThreadStore>,
+        agent_id: AgentId,
+        telemetry_id: SharedString,
+        logo: ui::IconName,
+        tool_provider: Option<Arc<dyn NativeAgentToolProvider>>,
+    ) -> Self {
+        Self {
+            fs,
+            thread_store,
+            agent_id,
+            telemetry_id,
+            logo,
+            tool_provider,
+        }
     }
 }
 
 impl AgentServer for NativeAgentServer {
     fn agent_id(&self) -> AgentId {
-        crate::ZED_AGENT_ID.clone()
+        self.agent_id.clone()
     }
 
     fn logo(&self) -> ui::IconName {
-        ui::IconName::ZedAgent
+        self.logo
     }
 
     fn connect(
@@ -46,17 +77,31 @@ impl AgentServer for NativeAgentServer {
         let fs = self.fs.clone();
         let thread_store = self.thread_store.clone();
         let prompt_store = PromptStore::global(cx);
+        let agent_id = self.agent_id.clone();
+        let telemetry_id = self.telemetry_id.clone();
+        let tool_provider = self.tool_provider.clone();
         cx.spawn(async move |cx| {
             log::debug!("Creating templates for native agent");
             let templates = Templates::new();
             let prompt_store = prompt_store.await.log_err();
 
             log::debug!("Creating native agent entity");
-            let agent =
-                cx.update(|cx| NativeAgent::new(thread_store, templates, prompt_store, fs, cx));
+            let agent = cx.update(|cx| {
+                NativeAgent::new_with_tools(
+                    thread_store,
+                    templates,
+                    prompt_store,
+                    fs,
+                    agent_id.clone(),
+                    telemetry_id.clone(),
+                    tool_provider,
+                    cx,
+                )
+            });
 
             // Create the connection wrapper
-            let connection = NativeAgentConnection(agent);
+            let connection =
+                NativeAgentConnection::new_with_identity(agent, agent_id, telemetry_id);
             log::debug!("NativeAgentServer connection established successfully");
 
             Ok(Rc::new(connection) as Rc<dyn acp_thread::AgentConnection>)
