@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use futures::{FutureExt as _, pin_mut, select_biased};
@@ -172,7 +172,7 @@ impl SubprocessRunner {
         })?;
 
         let output = child.output().fuse();
-        let timer = smol::Timer::after(timeout).fuse();
+        let timer = async_io::Timer::at(Instant::now() + timeout).fuse();
         pin_mut!(output, timer);
 
         let output = select_biased! {

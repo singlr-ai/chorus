@@ -187,7 +187,7 @@ impl SshApiTunnel {
             if std::net::TcpStream::connect(("127.0.0.1", self.local_port)).is_ok() {
                 return Ok(());
             }
-            smol::Timer::after(Duration::from_millis(25)).await;
+            async_io::Timer::at(Instant::now() + Duration::from_millis(25)).await;
         }
         Err(SingBridgeError::ApiUnavailable {
             message: "timed out creating SSH tunnel to sing API".to_string(),
@@ -251,7 +251,7 @@ async fn read_api_token(host: &SshConnectionOptions) -> Result<String, SingBridg
                 last_error = Some(error.to_string());
             }
         }
-        smol::Timer::after(Duration::from_millis(100)).await;
+        async_io::Timer::at(Instant::now() + Duration::from_millis(100)).await;
     }
 
     Err(SingBridgeError::ApiUnavailable {

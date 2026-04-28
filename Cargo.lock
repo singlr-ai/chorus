@@ -420,6 +420,7 @@ dependencies = [
  "serde_json",
  "serde_json_lenient",
  "settings",
+ "sing_orchestrator",
  "streaming_diff",
  "task",
  "telemetry",
@@ -16445,6 +16446,7 @@ dependencies = [
 name = "sing_bridge"
 version = "0.1.0"
 dependencies = [
+ "async-io",
  "async-trait",
  "futures 0.3.32",
  "http_client",
@@ -16469,6 +16471,24 @@ version = "0.1.0"
 [[package]]
 name = "sing_orchestrator"
 version = "0.1.0"
+dependencies = [
+ "acp_thread",
+ "agent",
+ "agent-client-protocol",
+ "agent_servers",
+ "anyhow",
+ "collections",
+ "fs",
+ "futures 0.3.32",
+ "gpui",
+ "language_model",
+ "project",
+ "schemars 1.0.4",
+ "serde",
+ "serde_json",
+ "sing_bridge",
+ "ui",
+]
 
 [[package]]
 name = "sing_project"

@@ -2994,6 +2994,39 @@ impl AgentPanel {
                                     }
                                 }),
                         )
+                        .item(
+                            ContextMenuEntry::new("Sing Orchestrator")
+                                .when(is_agent_selected(Agent::SingOrchestrator), |this| {
+                                    this.action(Box::new(NewExternalAgentThread { agent: None }))
+                                })
+                                .icon(IconName::Sparkle)
+                                .icon_color(Color::Muted)
+                                .disabled(is_via_collab)
+                                .handler({
+                                    let workspace = workspace.clone();
+                                    move |window, cx| {
+                                        if let Some(workspace) = workspace.upgrade() {
+                                            workspace.update(cx, |workspace, cx| {
+                                                if let Some(panel) =
+                                                    workspace.panel::<AgentPanel>(cx)
+                                                {
+                                                    panel.update(cx, |panel, cx| {
+                                                        panel.new_external_agent_thread(
+                                                            &NewExternalAgentThread {
+                                                                agent: Some(
+                                                                    Agent::SingOrchestrator,
+                                                                ),
+                                                            },
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    });
+                                                }
+                                            });
+                                        }
+                                    }
+                                }),
+                        )
                         .map(|mut menu| {
                             let agent_server_store = agent_server_store.read(cx);
                             let registry_store = project::AgentRegistryStore::try_global(cx);

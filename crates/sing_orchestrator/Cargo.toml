@@ -8,5 +8,23 @@ license = "GPL-3.0-or-later"
 [lib]
 path = "src/sing_orchestrator.rs"
 
+[dependencies]
+acp_thread.workspace = true
+agent.workspace = true
+agent-client-protocol.workspace = true
+agent_servers.workspace = true
+anyhow.workspace = true
+collections.workspace = true
+fs.workspace = true
+futures.workspace = true
+gpui.workspace = true
+language_model.workspace = true
+project.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sing_bridge.workspace = true
+ui.workspace = true
+
 [lints]
 workspace = true

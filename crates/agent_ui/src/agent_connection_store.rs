@@ -238,7 +238,7 @@ impl AgentConnectionStore {
     ) {
         let store = store.read(cx);
         self.entries.retain(|key, _| match key {
-            Agent::NativeAgent => true,
+            Agent::NativeAgent | Agent::SingOrchestrator => true,
             Agent::Custom { id } => store.external_agents.contains_key(id),
             #[cfg(any(test, feature = "test-support"))]
             Agent::Stub => true,
