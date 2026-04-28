@@ -10,7 +10,7 @@ use remote::SshConnectionOptions;
 use reqwest_client::ReqwestClient;
 use serde::{Serialize, de::DeserializeOwned};
 use util::{
-    command::{Stdio, new_command},
+    command::{Child, Stdio, new_command},
     shell::ShellKind,
 };
 
@@ -145,7 +145,7 @@ impl SingApiClient {
 
 struct SshApiTunnel {
     local_port: u16,
-    child: smol::process::Child,
+    child: Child,
 }
 
 impl SshApiTunnel {
