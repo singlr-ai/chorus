@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -8,6 +9,21 @@ use sing_bridge::{
 };
 
 use crate::client::SingProjectClient;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentActivitySummary {
+    pub headline: String,
+    pub detail: Option<String>,
+    pub timestamp: Option<String>,
+    pub needs_attention: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentActivityEvent {
+    pub project: String,
+    pub message: String,
+    pub needs_attention: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectActionKind {
@@ -87,6 +103,55 @@ impl ProjectRow {
 
     pub fn can_stop(&self) -> bool {
         self.status == ProjectStatus::Running
+    }
+
+    pub fn agent_activity(&self) -> AgentActivitySummary {
+        if self.agent_session.running {
+            let headline = self
+                .current_task()
+                .map(|task| format!("Working on {task}"))
+                .unwrap_or_else(|| "Agent running".to_string());
+            let detail = self
+                .agent_session
+                .branch
+                .as_deref()
+                .map(|branch| format!("Branch {branch}"));
+
+            return AgentActivitySummary {
+                headline,
+                detail,
+                timestamp: self.agent_session.started_at.clone(),
+                needs_attention: false,
+            };
+        }
+
+        if self.agent_session.available {
+            return AgentActivitySummary {
+                headline: "Ready for dispatch".to_string(),
+                detail: self
+                    .agent_session
+                    .branch
+                    .as_deref()
+                    .map(|branch| format!("Last branch {branch}")),
+                timestamp: None,
+                needs_attention: false,
+            };
+        }
+
+        let detail = self.agent_session.reason.as_deref().map(humanize_reason);
+        AgentActivitySummary {
+            headline: if matches!(
+                self.status,
+                ProjectStatus::Stopped | ProjectStatus::NotCreated
+            ) {
+                "Agent paused".to_string()
+            } else {
+                "Agent needs attention".to_string()
+            },
+            detail,
+            timestamp: None,
+            needs_attention: true,
+        }
     }
 
     pub fn agent_summary(&self) -> String {
@@ -201,22 +266,17 @@ impl ProjectRow {
     }
 
     pub fn list_summary(&self) -> String {
-        if let Some(task) = self.current_task() {
-            return format!("Task: {task}");
+        let activity = self.agent_activity();
+        let spec_summary = self.spec_summary();
+        if self.agent_session.running {
+            return format!("{} · {spec_summary}", activity.headline);
         }
 
-        let spec_summary = self.spec_summary();
         if let Some(next_ready) = self.next_ready_id() {
             return format!("Next: {next_ready} · {spec_summary}");
         }
 
-        if self.agent_session.running {
-            format!("Agent active · {spec_summary}")
-        } else if self.agent_session.available {
-            format!("Agent idle · {spec_summary}")
-        } else {
-            spec_summary
-        }
+        format!("{} · {spec_summary}", activity.headline)
     }
 
     pub fn ready_count(&self) -> Option<u32> {
@@ -262,6 +322,58 @@ impl ProjectRow {
 
         (!parts.is_empty()).then(|| parts.join(" | "))
     }
+}
+
+pub fn agent_activity_events(
+    previous: &[ProjectRow],
+    current: &[ProjectRow],
+) -> Vec<AgentActivityEvent> {
+    let previous = previous
+        .iter()
+        .map(|project| (project.name.as_str(), project))
+        .collect::<HashMap<_, _>>();
+
+    current
+        .iter()
+        .filter_map(|project| {
+            let previous = previous.get(project.name.as_str())?;
+            agent_activity_event(previous, project)
+        })
+        .collect()
+}
+
+fn agent_activity_event(previous: &ProjectRow, current: &ProjectRow) -> Option<AgentActivityEvent> {
+    let previous_session = &previous.agent_session;
+    let current_session = &current.agent_session;
+
+    let message = if !previous_session.running && current_session.running {
+        current_session
+            .task
+            .as_deref()
+            .map(|task| format!("Agent started: {task}"))
+            .unwrap_or_else(|| "Agent started".to_string())
+    } else if previous_session.running && !current_session.running && current_session.available {
+        "Agent finished and is idle".to_string()
+    } else if previous_session.running && !current_session.available {
+        "Agent stopped reporting".to_string()
+    } else if previous_session.running
+        && current_session.running
+        && previous_session.task != current_session.task
+    {
+        current_session
+            .task
+            .as_deref()
+            .map(|task| format!("Agent switched task: {task}"))
+            .unwrap_or_else(|| "Agent task changed".to_string())
+    } else {
+        return None;
+    };
+
+    Some(AgentActivityEvent {
+        project: current.name.clone(),
+        message,
+        needs_attention: !current_session.available,
+    })
 }
 
 pub async fn load_project_rows(client: Arc<dyn SingProjectClient>) -> Result<Vec<ProjectRow>> {
@@ -348,7 +460,9 @@ mod tests {
         ProjectStopResult, ProjectSummary,
     };
 
-    use super::{ProjectRow, load_project_rows, next_selection};
+    use super::{
+        AgentActivityEvent, ProjectRow, agent_activity_events, load_project_rows, next_selection,
+    };
     use crate::client::SingProjectClient;
 
     #[derive(Clone)]
@@ -434,7 +548,10 @@ mod tests {
         );
         assert_eq!(rows[0].agent_summary(), "Agent running | auth-fix");
         assert_eq!(rows[0].spec_summary(), "2 ready · 1 blocked");
-        assert_eq!(rows[0].list_summary(), "Task: auth-fix");
+        assert_eq!(
+            rows[0].list_summary(),
+            "Working on auth-fix · 2 ready · 1 blocked"
+        );
 
         assert_eq!(rows[1].name, "beta");
         assert_eq!(rows[1].status, ProjectStatus::Stopped);
@@ -564,6 +681,71 @@ mod tests {
             row.spec_detail(),
             "Start the project to load its spec board"
         );
+    }
+
+    #[test]
+    fn agent_activity_events_report_safe_state_changes() {
+        let previous = vec![project_row("alpha", false, true, None)];
+        let current = vec![project_row("alpha", true, true, Some("auth-fix"))];
+
+        assert_eq!(
+            agent_activity_events(&previous, &current),
+            vec![AgentActivityEvent {
+                project: "alpha".to_string(),
+                message: "Agent started: auth-fix".to_string(),
+                needs_attention: false,
+            }]
+        );
+
+        let previous = current;
+        let current = vec![project_row("alpha", false, true, None)];
+
+        assert_eq!(
+            agent_activity_events(&previous, &current),
+            vec![AgentActivityEvent {
+                project: "alpha".to_string(),
+                message: "Agent finished and is idle".to_string(),
+                needs_attention: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn agent_activity_summary_avoids_raw_log_output() {
+        let row = project_row("alpha", true, true, Some("auth-fix"));
+
+        assert_eq!(row.agent_activity().headline, "Working on auth-fix");
+        assert_eq!(
+            row.agent_activity().detail.as_deref(),
+            Some("Branch feat/auth-fix")
+        );
+        assert!(!row.agent_activity().needs_attention);
+    }
+
+    fn project_row(name: &str, running: bool, available: bool, task: Option<&str>) -> ProjectRow {
+        ProjectRow {
+            name: name.to_string(),
+            status: ProjectStatus::Running,
+            ip: None,
+            description: None,
+            runtimes: None,
+            agent_session: AgentSessionInfo {
+                available,
+                running,
+                reason: None,
+                pid: running.then_some(42),
+                task: task.map(str::to_string),
+                started_at: running.then(|| "2026-04-29T00:00:00Z".to_string()),
+                branch: running.then(|| "feat/auth-fix".to_string()),
+                log_path: Some("/tmp/agent.log".to_string()),
+            },
+            specs: ProjectSpecAvailability {
+                available: true,
+                ready_count: Some(1),
+                ..Default::default()
+            },
+            detail_error: None,
+        }
     }
 
     fn project_config(name: &str, status: ProjectStatus) -> ProjectConfig {
