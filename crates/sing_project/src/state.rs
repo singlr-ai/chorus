@@ -151,11 +151,27 @@ impl ProjectRow {
         if self.specs.available {
             let ready = self.specs.ready_count.unwrap_or_default();
             let blocked = self.specs.blocked_count.unwrap_or_default();
-            format!("Specs ready {ready} | blocked {blocked}")
+            let mut parts = Vec::new();
+
+            if ready > 0 {
+                parts.push(format!("{ready} ready"));
+            }
+            if blocked > 0 {
+                parts.push(format!("{blocked} blocked"));
+            }
+
+            if parts.is_empty() {
+                "No ready specs".to_string()
+            } else {
+                parts.join(" · ")
+            }
         } else if let Some(reason) = self.specs.reason.as_deref() {
-            format!("Specs unavailable | {}", humanize_reason(reason))
+            match reason {
+                "project_stopped" => "Start project to load specs".to_string(),
+                _ => format!("Specs need attention · {}", humanize_reason(reason)),
+            }
         } else {
-            "Specs unavailable".to_string()
+            "Specs need setup".to_string()
         }
     }
 
@@ -175,9 +191,31 @@ impl ProjectRow {
             }
             parts.join(" | ")
         } else if let Some(reason) = self.specs.reason.as_deref() {
-            humanize_reason(reason)
+            match reason {
+                "project_stopped" => "Start the project to load its spec board".to_string(),
+                _ => format!("Check spec setup: {}", humanize_reason(reason)),
+            }
         } else {
-            "Spec data unavailable".to_string()
+            "Spec board is not configured yet".to_string()
+        }
+    }
+
+    pub fn list_summary(&self) -> String {
+        if let Some(task) = self.current_task() {
+            return format!("Task: {task}");
+        }
+
+        let spec_summary = self.spec_summary();
+        if let Some(next_ready) = self.next_ready_id() {
+            return format!("Next: {next_ready} · {spec_summary}");
+        }
+
+        if self.agent_session.running {
+            format!("Agent active · {spec_summary}")
+        } else if self.agent_session.available {
+            format!("Agent idle · {spec_summary}")
+        } else {
+            spec_summary
         }
     }
 
@@ -395,7 +433,8 @@ mod tests {
             Some("JDK 26 | Node 24.14.1")
         );
         assert_eq!(rows[0].agent_summary(), "Agent running | auth-fix");
-        assert_eq!(rows[0].spec_summary(), "Specs ready 2 | blocked 1");
+        assert_eq!(rows[0].spec_summary(), "2 ready · 1 blocked");
+        assert_eq!(rows[0].list_summary(), "Task: auth-fix");
 
         assert_eq!(rows[1].name, "beta");
         assert_eq!(rows[1].status, ProjectStatus::Stopped);
@@ -406,7 +445,7 @@ mod tests {
         );
         assert_eq!(
             rows[1].spec_summary(),
-            "Specs unavailable | ssh command failed"
+            "Specs need attention · ssh command failed"
         );
     }
 
@@ -520,8 +559,11 @@ mod tests {
 
         assert_eq!(row.agent_summary(), "Agent unavailable | Project stopped");
         assert_eq!(row.agent_detail(), "Agent unavailable | Project stopped");
-        assert_eq!(row.spec_summary(), "Specs unavailable | Project stopped");
-        assert_eq!(row.spec_detail(), "Project stopped");
+        assert_eq!(row.spec_summary(), "Start project to load specs");
+        assert_eq!(
+            row.spec_detail(),
+            "Start the project to load its spec board"
+        );
     }
 
     fn project_config(name: &str, status: ProjectStatus) -> ProjectConfig {

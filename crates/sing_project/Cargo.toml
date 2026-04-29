@@ -23,5 +23,8 @@ ui.workspace = true
 util.workspace = true
 workspace.workspace = true
 
+[dev-dependencies]
+recent_projects = { workspace = true, features = ["test-support"] }
+
 [lints]
 workspace = true
