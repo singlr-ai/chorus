@@ -2995,7 +2995,7 @@ impl AgentPanel {
                                 }),
                         )
                         .item(
-                            ContextMenuEntry::new("Sing Orchestrator")
+                            ContextMenuEntry::new("Chorus Agent")
                                 .when(is_agent_selected(Agent::SingOrchestrator), |this| {
                                     this.action(Box::new(NewExternalAgentThread { agent: None }))
                                 })

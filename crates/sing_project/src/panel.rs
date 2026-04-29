@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use sing_bridge::ProjectStatus;
 use ui::{
     Button, Chip, Color, Icon, IconButtonShape, IconName, IconSize, Indicator, Label, LabelSize,
-    ListItem, ListItemSpacing, TintColor, Tooltip, prelude::*,
+    ListItem, ListItemSpacing, SpinnerLabel, TintColor, Tooltip, prelude::*,
 };
 use util::{ResultExt, TryFutureExt};
 use workspace::{
@@ -549,30 +549,16 @@ impl SingProjectPanel {
             },
         )];
 
-        if let Some(ready) = project.ready_count() {
-            badges.push(Self::badge(
-                format!("Ready {ready}"),
-                if ready > 0 {
-                    Color::Success
-                } else {
-                    Color::Muted
-                },
-            ));
+        if let Some(ready) = project.ready_count().filter(|ready| *ready > 0) {
+            badges.push(Self::badge(format!("Ready {ready}"), Color::Success));
         }
 
-        if let Some(blocked) = project.blocked_count() {
-            badges.push(Self::badge(
-                format!("Blocked {blocked}"),
-                if blocked > 0 {
-                    Color::Warning
-                } else {
-                    Color::Muted
-                },
-            ));
+        if let Some(blocked) = project.blocked_count().filter(|blocked| *blocked > 0) {
+            badges.push(Self::badge(format!("Blocked {blocked}"), Color::Warning));
         }
 
         if project.status == ProjectStatus::Running && !project.specs.available {
-            badges.push(Self::badge("Specs unavailable", Color::Warning));
+            badges.push(Self::badge("Specs need setup", Color::Warning));
         }
 
         badges
@@ -586,15 +572,27 @@ impl SingProjectPanel {
         Chip::new(label.into()).label_color(color)
     }
 
+    fn detail_line(label: &'static str, value: impl Into<String>) -> AnyElement {
+        h_flex()
+            .w_full()
+            .items_start()
+            .gap_2()
+            .child(
+                div()
+                    .w(px(72.))
+                    .child(Label::new(label).size(LabelSize::Small).color(Color::Muted)),
+            )
+            .child(
+                Label::new(value.into())
+                    .size(LabelSize::Small)
+                    .color(Color::Default)
+                    .truncate(),
+            )
+            .into_any_element()
+    }
+
     fn project_secondary_line(&self, project: &ProjectRow) -> Option<String> {
-        project
-            .current_task()
-            .map(|task| format!("Current task: {task}"))
-            .or_else(|| {
-                project
-                    .next_ready_id()
-                    .map(|next_ready| format!("Next ready: {next_ready}"))
-            })
+        Some(project.list_summary())
     }
 
     fn render_header(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -643,15 +641,23 @@ impl SingProjectPanel {
                     .items_center()
                     .justify_between()
                     .gap_2()
-                    .child(
-                        Label::new(if self.loading {
-                            "Refreshing project state"
-                        } else {
-                            "Lifecycle, specs, and remote access"
-                        })
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
-                    )
+                    .child(if self.loading {
+                        h_flex()
+                            .gap_1()
+                            .items_center()
+                            .child(SpinnerLabel::dots().size(LabelSize::Small))
+                            .child(
+                                Label::new("Refreshing projects")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .into_any_element()
+                    } else {
+                        Label::new("Remote projects and specs")
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .into_any_element()
+                    })
                     .when_some(self.refresh_status_label(), |element, refreshed| {
                         element.child(
                             Label::new(refreshed)
@@ -696,7 +702,7 @@ impl SingProjectPanel {
                 .justify_center()
                 .items_center()
                 .gap_2()
-                .child(Icon::new(IconName::RotateCw).color(Color::Muted))
+                .child(SpinnerLabel::dots_variant().size(LabelSize::Large))
                 .child(
                     Label::new("Loading projects")
                         .size(LabelSize::Small)
@@ -758,13 +764,6 @@ impl SingProjectPanel {
                                     .size(LabelSize::Small)
                                     .truncate(),
                             )
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .gap_1()
-                                    .flex_wrap()
-                                    .children(self.project_badges(project)),
-                            )
                             .when_some(secondary_line, |element, line| {
                                 element.child(
                                     Label::new(line)
@@ -807,6 +806,8 @@ impl SingProjectPanel {
         let can_stop = project.can_stop();
         let status_chip = self.project_status_chip(project);
         let secondary_line = self.project_secondary_line(project);
+        let branch = project.branch().map(str::to_string);
+        let ip = project.ip.clone();
 
         Some(
             v_flex()
@@ -847,38 +848,24 @@ impl SingProjectPanel {
                     )
                 })
                 .child(
-                    Label::new(runtime_summary)
-                        .size(LabelSize::Small)
-                        .color(Color::Muted)
-                        .truncate(),
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .p_2()
+                        .rounded_sm()
+                        .bg(theme.colors().panel_background)
+                        .border_1()
+                        .border_color(theme.colors().border_variant)
+                        .child(Self::detail_line("Runtime", runtime_summary))
+                        .child(Self::detail_line("Agent", project.agent_summary()))
+                        .child(Self::detail_line("Specs", project.spec_detail()))
+                        .when_some(branch, |element, branch| {
+                            element.child(Self::detail_line("Branch", branch))
+                        })
+                        .when_some(ip, |element, ip| {
+                            element.child(Self::detail_line("Network", format!("IP {ip}")))
+                        }),
                 )
-                .when_some(project.branch(), |element, branch| {
-                    element.child(
-                        Label::new(format!("Branch {branch}"))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .truncate(),
-                    )
-                })
-                .child(
-                    Label::new(project.agent_detail())
-                        .size(LabelSize::Small)
-                        .color(Color::Muted)
-                        .truncate(),
-                )
-                .child(
-                    Label::new(project.spec_detail())
-                        .size(LabelSize::Small)
-                        .color(Color::Muted)
-                        .truncate(),
-                )
-                .when_some(project.ip.as_ref(), |element, ip| {
-                    element.child(
-                        Label::new(format!("Container IP {ip}"))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
-                    )
-                })
                 .when_some(detail_error.as_ref(), |element, error| {
                     element.child(
                         Label::new(error.clone())
