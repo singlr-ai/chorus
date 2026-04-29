@@ -25,7 +25,9 @@ use workspace::{
 };
 
 use crate::client::{DefaultSingProjectClientFactory, SingProjectClient, SingProjectClientFactory};
-use crate::state::{ProjectActionKind, ProjectRow, load_project_rows, next_selection};
+use crate::state::{
+    ProjectActionKind, ProjectRow, agent_activity_events, load_project_rows, next_selection,
+};
 
 const SING_PROJECT_PANEL_KEY: &str = "SingProjectPanel";
 const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
@@ -299,10 +301,19 @@ impl SingProjectPanel {
 
         match result {
             Ok(projects) => {
+                let events = agent_activity_events(&self.projects, &projects);
                 self.last_refreshed_at = Some(Instant::now());
                 self.projects = projects;
                 self.selected_project =
                     next_selection(self.selected_project.as_deref(), &self.projects);
+                for event in events {
+                    self.show_agent_activity_event(
+                        event.project,
+                        event.message,
+                        event.needs_attention,
+                        cx,
+                    );
+                }
             }
             Err(error) => {
                 self.last_error = Some(error.to_string());
@@ -451,7 +462,27 @@ impl SingProjectPanel {
             return;
         };
 
-        self.show_toast(format!("{} | {}", project.name, project.agent_detail()), cx);
+        let activity = project.agent_activity();
+        let mut message = format!("{} | {}", project.name, activity.headline);
+        if let Some(detail) = activity.detail {
+            message.push_str(&format!(" | {detail}"));
+        }
+        self.show_toast(message, cx);
+    }
+
+    fn show_agent_activity_event(
+        &mut self,
+        project: String,
+        message: String,
+        needs_attention: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let prefix = if needs_attention {
+            "Agent needs attention"
+        } else {
+            "Agent update"
+        };
+        self.show_toast(format!("{prefix}: {project} · {message}"), cx);
     }
 
     fn show_action_error(&mut self, error: String, cx: &mut Context<Self>) {
@@ -805,6 +836,7 @@ impl SingProjectPanel {
         let can_start = project.can_start();
         let can_stop = project.can_stop();
         let status_chip = self.project_status_chip(project);
+        let activity = project.agent_activity();
         let secondary_line = self.project_secondary_line(project);
         let branch = project.branch().map(str::to_string);
         let ip = project.ip.clone();
@@ -857,7 +889,13 @@ impl SingProjectPanel {
                         .border_1()
                         .border_color(theme.colors().border_variant)
                         .child(Self::detail_line("Runtime", runtime_summary))
-                        .child(Self::detail_line("Agent", project.agent_summary()))
+                        .child(Self::detail_line("Activity", activity.headline))
+                        .when_some(activity.detail, |element, detail| {
+                            element.child(Self::detail_line("Context", detail))
+                        })
+                        .when_some(activity.timestamp, |element, timestamp| {
+                            element.child(Self::detail_line("Started", timestamp))
+                        })
                         .child(Self::detail_line("Specs", project.spec_detail()))
                         .when_some(branch, |element, branch| {
                             element.child(Self::detail_line("Branch", branch))
