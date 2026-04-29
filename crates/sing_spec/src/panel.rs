@@ -17,7 +17,7 @@ use sing_bridge::{
 };
 use ui::{
     Button, ButtonStyle, Chip, Color, Icon, IconButtonShape, IconName, IconSize, Indicator, Label,
-    LabelSize, TintColor, Tooltip, prelude::*,
+    LabelSize, SpinnerLabel, TintColor, Tooltip, prelude::*,
 };
 use util::{ResultExt, TryFutureExt};
 use workspace::{
@@ -830,12 +830,18 @@ impl SingSpecBoardPanel {
                     .items_center()
                     .justify_between()
                     .gap_2()
-                    .child(Label::new("Specs"))
+                    .child(
+                        v_flex().gap_0p5().child(Label::new("Specs")).child(
+                            Label::new("Plan, dispatch, review, and ship with agents")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        ),
+                    )
                     .child(
                         h_flex()
                             .gap_2()
                             .child(
-                                Button::new("sing-spec-dispatch-next", "Dispatch next")
+                                Button::new("sing-spec-dispatch-next", "Start next")
                                     .style(ButtonStyle::Filled)
                                     .label_size(LabelSize::Small)
                                     .loading(self.is_dispatching(None))
@@ -847,13 +853,15 @@ impl SingSpecBoardPanel {
                                                 board.summary.ready_count == 0
                                             }),
                                     )
-                                    .tooltip(Tooltip::text("Dispatch the next ready spec"))
+                                    .tooltip(Tooltip::text(
+                                        "Start the next ready work item with an agent",
+                                    ))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.dispatch_next_ready(window, cx);
                                     })),
                             )
                             .child(
-                                Button::new("sing-spec-agent-status", "Agent status")
+                                Button::new("sing-spec-agent-status", "Activity")
                                     .style(ButtonStyle::Outlined)
                                     .label_size(LabelSize::Small)
                                     .loading(matches!(
@@ -937,12 +945,12 @@ impl SingSpecBoardPanel {
                                     })),
                             )
                             .child(
-                                Button::new("sing-spec-new", "New spec")
+                                Button::new("sing-spec-new", "New work")
                                     .style(ButtonStyle::Filled)
                                     .label_size(LabelSize::Small)
                                     .disabled(self.selected_project.is_none() || self.is_creating())
                                     .tooltip(Tooltip::text(
-                                        "Create a new spec in the selected project",
+                                        "Create a new work item in the selected project",
                                     ))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.toggle_new_spec_form(window, cx);
@@ -1082,7 +1090,7 @@ impl SingSpecBoardPanel {
                 } else if self.projects.is_empty() {
                     "Start a project to browse specs"
                 } else {
-                    "Kanban view for the selected project"
+                    "AI-native workflow for the selected project"
                 })
                 .size(LabelSize::Small)
                 .color(Color::Muted),
@@ -1130,9 +1138,9 @@ impl SingSpecBoardPanel {
                 .justify_center()
                 .items_center()
                 .gap_2()
-                .child(Icon::new(IconName::RotateCw).color(Color::Muted))
+                .child(SpinnerLabel::dots_variant().size(LabelSize::Large))
                 .child(
-                    Label::new("Loading spec board")
+                    Label::new("Loading workflow")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -1147,7 +1155,7 @@ impl SingSpecBoardPanel {
                 .gap_2()
                 .child(Icon::new(IconName::ListTodo).color(Color::Muted))
                 .child(
-                    Label::new("No running projects with accessible specs")
+                    Label::new("No running projects with specs yet")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -1162,7 +1170,7 @@ impl SingSpecBoardPanel {
                 .gap_2()
                 .child(Icon::new(IconName::ListTodo).color(Color::Muted))
                 .child(
-                    Label::new("Select a project to load its board")
+                    Label::new("Select a project to load its workflow")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -1201,11 +1209,9 @@ impl SingSpecBoardPanel {
             let spec_id = spec.spec.id.clone();
             let opening = self.is_opening(&spec_id);
             let selected = selected_spec == Some(spec_id.as_str());
-            let title = if spec.spec.title.is_empty() {
-                spec.spec.id.clone()
-            } else {
-                spec.spec.title.clone()
-            };
+            let title = spec_title(spec);
+            let next_action = spec_next_action(spec);
+            let meta = spec_meta_line(spec);
 
             v_flex()
                 .id(format!("sing-spec-card-{spec_id}"))
@@ -1247,6 +1253,10 @@ impl SingSpecBoardPanel {
                                         .truncate(),
                                 ),
                         )
+                        .child(summary_badge(
+                            spec_next_action_label(spec),
+                            spec_next_action_color(spec),
+                        ))
                         .when(opening, |element| {
                             element.child(
                                 Chip::new("Opening")
@@ -1256,15 +1266,25 @@ impl SingSpecBoardPanel {
                         }),
                 )
                 .child(Label::new(title).size(LabelSize::Small))
-                .child(h_flex().gap_1().flex_wrap().children(card_badges(spec)))
-                .when(spec.blocked, |element| {
+                .child(
+                    Label::new(next_action)
+                        .size(LabelSize::Small)
+                        .color(if spec.blocked {
+                            Color::Warning
+                        } else {
+                            Color::Muted
+                        })
+                        .truncate(),
+                )
+                .when_some(meta, |element, meta| {
                     element.child(
-                        Label::new(format!("Waiting on {}", spec.unmet_dependencies.join(", ")))
-                            .size(LabelSize::Small)
-                            .color(Color::Warning)
+                        Label::new(meta)
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted)
                             .truncate(),
                     )
                 })
+                .child(h_flex().gap_1().flex_wrap().children(card_badges(spec)))
                 .into_any_element()
         });
 
@@ -1283,7 +1303,16 @@ impl SingSpecBoardPanel {
                     .w_full()
                     .justify_between()
                     .gap_2()
-                    .child(Label::new(spec_status_label(status)))
+                    .child(
+                        v_flex()
+                            .gap_0p5()
+                            .child(Label::new(spec_status_label(status)))
+                            .child(
+                                Label::new(spec_status_guidance(status))
+                                    .size(LabelSize::XSmall)
+                                    .color(Color::Muted),
+                            ),
+                    )
                     .child(summary_badge(
                         specs_for_status(board, status).len().to_string(),
                         spec_status_color(status),
@@ -1297,12 +1326,9 @@ impl SingSpecBoardPanel {
                         .justify_center()
                         .items_center()
                         .child(
-                            Label::new(format!(
-                                "No {}",
-                                spec_status_label(status).to_ascii_lowercase()
-                            ))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
+                            Label::new(empty_column_message(status))
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
                         ),
                 )
             })
@@ -1314,11 +1340,7 @@ impl SingSpecBoardPanel {
         let spec = self.selected_spec_entry()?;
         let theme = cx.theme();
         let project = self.selected_project.clone()?;
-        let title = if spec.spec.title.is_empty() {
-            spec.spec.id.clone()
-        } else {
-            spec.spec.title.clone()
-        };
+        let title = spec_title(spec);
         let spec_id = spec.spec.id.clone();
 
         Some(
@@ -1353,38 +1375,41 @@ impl SingSpecBoardPanel {
                         .flex_wrap()
                         .children(card_badges(spec)),
                 )
-                .when_some(spec.spec.assignee.as_ref(), |element, assignee| {
-                    element.child(
-                        Label::new(format!("Assignee {assignee}"))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .truncate(),
-                    )
-                })
-                .when_some(spec.spec.branch.as_ref(), |element, branch| {
-                    element.child(
-                        Label::new(format!("Branch {branch}"))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .truncate(),
-                    )
-                })
-                .when(!spec.spec.depends_on.is_empty(), |element| {
-                    element.child(
-                        Label::new(format!("Depends on {}", spec.spec.depends_on.join(", ")))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .truncate(),
-                    )
-                })
-                .when(spec.blocked, |element| {
-                    element.child(
-                        Label::new(format!("Blocked by {}", spec.unmet_dependencies.join(", ")))
-                            .size(LabelSize::Small)
-                            .color(Color::Warning)
-                            .truncate(),
-                    )
-                })
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .p_2()
+                        .rounded_sm()
+                        .bg(theme.colors().panel_background)
+                        .border_1()
+                        .border_color(theme.colors().border_variant)
+                        .child(detail_line(
+                            "Next",
+                            spec_next_action(spec),
+                            spec_next_action_color(spec),
+                        ))
+                        .when_some(spec.spec.assignee.as_ref(), |element, assignee| {
+                            element.child(detail_line("Owner", assignee.clone(), Color::Muted))
+                        })
+                        .when_some(spec.spec.branch.as_ref(), |element, branch| {
+                            element.child(detail_line("Branch", branch.clone(), Color::Accent))
+                        })
+                        .when(!spec.spec.depends_on.is_empty(), |element| {
+                            element.child(detail_line(
+                                "Depends",
+                                spec.spec.depends_on.join(", "),
+                                Color::Muted,
+                            ))
+                        })
+                        .when(spec.blocked, |element| {
+                            element.child(detail_line(
+                                "Blocked",
+                                spec.unmet_dependencies.join(", "),
+                                Color::Warning,
+                            ))
+                        }),
+                )
                 .child(
                     h_flex()
                         .w_full()
@@ -1414,7 +1439,7 @@ impl SingSpecBoardPanel {
                         .child({
                             let spec_id = spec_id.clone();
                             let blocked = spec.blocked;
-                            Button::new("sing-spec-dispatch-selected", "Dispatch")
+                            Button::new("sing-spec-dispatch-selected", "Start agent")
                                 .style(ButtonStyle::Filled)
                                 .label_size(LabelSize::Small)
                                 .loading(self.is_dispatching(Some(&spec_id)))
@@ -1426,7 +1451,7 @@ impl SingSpecBoardPanel {
                                 .tooltip(Tooltip::text(if blocked {
                                     "Spec is blocked by unmet dependencies"
                                 } else {
-                                    "Dispatch this spec to the configured agent"
+                                    "Start the configured agent on this work item"
                                 }))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.dispatch_selected_spec(spec_id.clone(), window, cx);
@@ -1605,6 +1630,112 @@ fn next_spec_selection(previous: Option<&str>, board: Option<&SpecBoardState>) -
         .or_else(|| board.specs.first().map(|spec| spec.spec.id.clone()))
 }
 
+fn spec_title(spec: &SpecEntry) -> String {
+    if spec.spec.title.is_empty() {
+        spec.spec.id.clone()
+    } else {
+        spec.spec.title.clone()
+    }
+}
+
+fn spec_meta_line(spec: &SpecEntry) -> Option<String> {
+    let mut parts = Vec::new();
+
+    if let Some(assignee) = spec.spec.assignee.as_ref() {
+        parts.push(format!("Owner {assignee}"));
+    }
+    if let Some(branch) = spec.spec.branch.as_ref() {
+        parts.push(branch.clone());
+    }
+    if !spec.spec.depends_on.is_empty() {
+        parts.push(format!("{} deps", spec.spec.depends_on.len()));
+    }
+
+    (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
+fn spec_next_action(spec: &SpecEntry) -> String {
+    if spec.blocked {
+        return format!(
+            "Unblock dependencies: {}",
+            spec.unmet_dependencies.join(", ")
+        );
+    }
+
+    match spec.spec.status {
+        SpecStatus::Pending if spec.ready => "Ready for an agent to start".to_string(),
+        SpecStatus::Pending => "Needs enough context to become ready".to_string(),
+        SpecStatus::InProgress => "Agent is working this spec".to_string(),
+        SpecStatus::Review => "Human review and merge decision needed".to_string(),
+        SpecStatus::Done => "Shipped and archived from active work".to_string(),
+    }
+}
+
+fn spec_next_action_label(spec: &SpecEntry) -> &'static str {
+    if spec.blocked {
+        return "Blocked";
+    }
+
+    match spec.spec.status {
+        SpecStatus::Pending if spec.ready => "Ready",
+        SpecStatus::Pending => "Draft",
+        SpecStatus::InProgress => "Agent",
+        SpecStatus::Review => "Review",
+        SpecStatus::Done => "Done",
+    }
+}
+
+fn spec_next_action_color(spec: &SpecEntry) -> Color {
+    if spec.blocked {
+        return Color::Warning;
+    }
+
+    match spec.spec.status {
+        SpecStatus::Pending if spec.ready => Color::Success,
+        SpecStatus::Pending => Color::Muted,
+        SpecStatus::InProgress => Color::Accent,
+        SpecStatus::Review => Color::Warning,
+        SpecStatus::Done => Color::Success,
+    }
+}
+
+fn spec_status_guidance(status: SpecStatus) -> &'static str {
+    match status {
+        SpecStatus::Pending => "Shape and unblock",
+        SpecStatus::InProgress => "Agents doing work",
+        SpecStatus::Review => "Humans decide",
+        SpecStatus::Done => "Merged or complete",
+    }
+}
+
+fn empty_column_message(status: SpecStatus) -> &'static str {
+    match status {
+        SpecStatus::Pending => "No planned work",
+        SpecStatus::InProgress => "No active agents",
+        SpecStatus::Review => "Nothing waiting on review",
+        SpecStatus::Done => "Nothing shipped yet",
+    }
+}
+
+fn detail_line(label: &'static str, value: impl Into<String>, color: Color) -> AnyElement {
+    h_flex()
+        .w_full()
+        .items_start()
+        .gap_2()
+        .child(
+            div()
+                .w(px(72.))
+                .child(Label::new(label).size(LabelSize::Small).color(Color::Muted)),
+        )
+        .child(
+            Label::new(value.into())
+                .size(LabelSize::Small)
+                .color(color)
+                .truncate(),
+        )
+        .into_any_element()
+}
+
 fn specs_for_status(board: &SpecBoardState, status: SpecStatus) -> Vec<&SpecEntry> {
     board
         .specs
@@ -1764,7 +1895,7 @@ mod tests {
 
     use super::{
         can_move_to, next_project_selection, next_spec_selection, running_projects,
-        specs_for_status,
+        spec_next_action, spec_next_action_label, specs_for_status,
     };
     use crate::SpecBoardState;
     use sing_bridge::{ProjectStatus, SpecStatus};
@@ -1851,6 +1982,22 @@ mod tests {
 
         assert_eq!(specs_for_status(&board, SpecStatus::Pending).len(), 2);
         assert_eq!(specs_for_status(&board, SpecStatus::Review).len(), 1);
+    }
+
+    #[test]
+    fn spec_next_action_guides_human_and_agent_work() {
+        let board = fixture_board();
+
+        assert_eq!(
+            spec_next_action(&board.specs[0]),
+            "Ready for an agent to start"
+        );
+        assert_eq!(spec_next_action_label(&board.specs[0]), "Ready");
+        assert_eq!(
+            spec_next_action(&board.specs[1]),
+            "Unblock dependencies: spec-a"
+        );
+        assert_eq!(spec_next_action_label(&board.specs[2]), "Review");
     }
 
     fn fixture_board() -> SpecBoardState {
