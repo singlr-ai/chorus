@@ -267,6 +267,9 @@ impl UserMessage {
                         MentionUri::PastedImage { .. } => {
                             debug_panic!("pasted image URI should not be used in mention content")
                         }
+                        MentionUri::PastedFile { .. } => {
+                            debug_panic!("pasted file URI should not be used in mention content")
+                        }
                         MentionUri::Directory { .. } => {
                             write!(&mut directory_context, "\n{}\n", content).ok();
                         }

@@ -25,6 +25,10 @@ pub enum MentionUri {
     PastedImage {
         name: String,
     },
+    PastedFile {
+        name: String,
+        mime_type: Option<String>,
+    },
     Directory {
         abs_path: PathBuf,
     },
@@ -206,6 +210,22 @@ impl MentionUri {
                     let name =
                         single_query_param(&url, "name")?.unwrap_or_else(|| "Image".to_string());
                     Ok(Self::PastedImage { name })
+                } else if path.starts_with("/agent/pasted-file") {
+                    let mut name = None;
+                    let mut mime_type = None;
+                    for (key, value) in url.query_pairs() {
+                        match key.as_ref() {
+                            "name" if name.is_none() => name = Some(value.to_string()),
+                            "mime_type" if mime_type.is_none() => {
+                                mime_type = Some(value.to_string())
+                            }
+                            _ => bail!("invalid query parameter"),
+                        }
+                    }
+                    Ok(Self::PastedFile {
+                        name: name.unwrap_or_else(|| "File".to_string()),
+                        mime_type,
+                    })
                 } else if path.starts_with("/agent/untitled-buffer") {
                     let fragment = url
                         .fragment()
@@ -278,6 +298,7 @@ impl MentionUri {
                 .to_string_lossy()
                 .into_owned(),
             MentionUri::PastedImage { name } => name.clone(),
+            MentionUri::PastedFile { name, .. } => name.clone(),
             MentionUri::Symbol { name, .. } => name.clone(),
             MentionUri::Thread { name, .. } => name.clone(),
             MentionUri::Rule { name, .. } => name.clone(),
@@ -347,6 +368,11 @@ impl MentionUri {
                 FileIcons::get_icon(abs_path, cx).unwrap_or_else(|| IconName::File.path().into())
             }
             MentionUri::PastedImage { .. } => IconName::Image.path().into(),
+            MentionUri::PastedFile {
+                mime_type: Some(mime_type),
+                ..
+            } if mime_type == "application/pdf" => IconName::FileDoc.path().into(),
+            MentionUri::PastedFile { .. } => IconName::File.path().into(),
             MentionUri::Directory { abs_path } => FileIcons::get_folder_icon(false, abs_path, cx)
                 .unwrap_or_else(|| IconName::Folder.path().into()),
             MentionUri::Symbol { .. } => IconName::Code.path().into(),
@@ -375,6 +401,14 @@ impl MentionUri {
             MentionUri::PastedImage { name } => {
                 let mut url = Url::parse("zed:///agent/pasted-image").unwrap();
                 url.query_pairs_mut().append_pair("name", name);
+                url
+            }
+            MentionUri::PastedFile { name, mime_type } => {
+                let mut url = Url::parse("zed:///agent/pasted-file").unwrap();
+                url.query_pairs_mut().append_pair("name", name);
+                if let Some(mime_type) = mime_type {
+                    url.query_pairs_mut().append_pair("mime_type", mime_type);
+                }
                 url
             }
             MentionUri::Directory { abs_path } => {
@@ -523,6 +557,20 @@ mod tests {
             }
             _ => panic!("Expected File variant"),
         }
+        assert_eq!(parsed.to_uri().to_string(), file_uri);
+    }
+
+    #[test]
+    fn test_parse_pasted_file_uri() {
+        let file_uri = "zed:///agent/pasted-file?name=scan.pdf&mime_type=application%2Fpdf";
+        let parsed = MentionUri::parse(file_uri, PathStyle::local()).unwrap();
+        assert_eq!(
+            parsed,
+            MentionUri::PastedFile {
+                name: "scan.pdf".to_string(),
+                mime_type: Some("application/pdf".to_string()),
+            }
+        );
         assert_eq!(parsed.to_uri().to_string(), file_uri);
     }
 
