@@ -526,7 +526,8 @@ fn render_import_settings_section(tab_index: &mut isize, cx: &mut App) -> impl I
         .child(h_flex().gap_1().child(vscode).child(cursor))
 }
 
-const FEATURED_AGENT_IDS: &[&str] = &["claude-acp", "codex-acp", "github-copilot-cli", "cursor"];
+pub(crate) const FEATURED_AGENT_IDS: &[&str] =
+    &["claude-acp", "codex-acp", "github-copilot-cli", "cursor"];
 
 fn render_registry_agent_button(
     agent: &RegistryAgent,
@@ -563,6 +564,7 @@ fn render_registry_agent_button(
         .state(state_element)
         .disabled(installed)
         .on_click(move |_, _, cx| {
+            telemetry::event!("Welcome Agent Install Clicked", agent = agent_id.as_str());
             let agent_id = agent_id.clone();
             update_settings_file(fs.clone(), cx, move |settings, _| {
                 let agent_servers = settings.agent_servers.get_or_insert_default();
