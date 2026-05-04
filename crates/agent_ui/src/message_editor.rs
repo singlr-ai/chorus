@@ -33,12 +33,13 @@ use project::{
 use prompt_store::PromptStore;
 use rope::Point;
 use settings::Settings;
+use std::path::PathBuf;
 use std::{fmt::Write, ops::Range, rc::Rc, sync::Arc};
 use theme_settings::ThemeSettings;
 use ui::{ContextMenu, prelude::*};
 use util::paths::PathStyle;
 use util::{ResultExt, debug_panic};
-use workspace::{CollaboratorId, Workspace};
+use workspace::{CollaboratorId, Workspace, notifications::NotifyResultExt as _};
 use zed_actions::agent::{Chat, PasteRaw};
 
 #[derive(Default)]
@@ -250,18 +251,104 @@ fn insert_mention_for_project_path(
 
 enum ResolvedPastedContextItem {
     Image(gpui::Image, gpui::SharedString),
+    Blob(crate::mention_set::ExternalBlob),
     ProjectPath(ProjectPath),
+}
+
+async fn resolve_external_context_items(
+    project: Entity<Project>,
+    project_is_local: bool,
+    supports_images: bool,
+    supports_embedded_context: bool,
+    paths: Vec<PathBuf>,
+    cx: &mut gpui::AsyncWindowContext,
+) -> (
+    Vec<ResolvedPastedContextItem>,
+    Vec<Entity<Worktree>>,
+    Vec<anyhow::Error>,
+) {
+    let mut items = Vec::new();
+    let mut added_worktrees = Vec::new();
+    let mut errors = Vec::new();
+    let default_image_name: SharedString = "Image".into();
+
+    for path in paths {
+        if supports_images
+            && let Some((image, name)) = cx
+                .background_spawn({
+                    let path = path.clone();
+                    let default_image_name = default_image_name.clone();
+                    async move {
+                        crate::mention_set::load_external_image_from_path(
+                            &path,
+                            &default_image_name,
+                        )
+                    }
+                })
+                .await
+        {
+            items.push(ResolvedPastedContextItem::Image(image, name));
+            continue;
+        }
+
+        if crate::mention_set::is_pdf_path(&path) {
+            if supports_embedded_context {
+                match cx
+                    .background_spawn({
+                        let path = path.clone();
+                        async move { crate::mention_set::load_external_pdf_from_path(&path) }
+                    })
+                    .await
+                {
+                    Ok(Some(blob)) => items.push(ResolvedPastedContextItem::Blob(blob)),
+                    Ok(None) => {}
+                    Err(error) => errors.push(error),
+                }
+            } else {
+                errors.push(anyhow!(
+                    "{} requires an agent that supports embedded file attachments.",
+                    path.display()
+                ));
+            }
+            continue;
+        }
+
+        if !project_is_local {
+            continue;
+        }
+
+        let Ok(resolve_task) = cx.update({
+            let project = project.clone();
+            let path = path.clone();
+            move |_, cx| Workspace::project_path_for_path(project, &path, false, cx)
+        }) else {
+            continue;
+        };
+
+        if let Some((worktree, project_path)) = resolve_task.await.log_err() {
+            added_worktrees.push(worktree);
+            items.push(ResolvedPastedContextItem::ProjectPath(project_path));
+        }
+    }
+
+    (items, added_worktrees, errors)
 }
 
 async fn resolve_pasted_context_items(
     project: Entity<Project>,
     project_is_local: bool,
     supports_images: bool,
+    supports_embedded_context: bool,
     entries: Vec<ClipboardEntry>,
     cx: &mut gpui::AsyncWindowContext,
-) -> (Vec<ResolvedPastedContextItem>, Vec<Entity<Worktree>>) {
+) -> (
+    Vec<ResolvedPastedContextItem>,
+    Vec<Entity<Worktree>>,
+    Vec<anyhow::Error>,
+) {
     let mut items = Vec::new();
     let mut added_worktrees = Vec::new();
+    let mut errors = Vec::new();
     let default_image_name: SharedString = "Image".into();
 
     for entry in entries {
@@ -276,48 +363,24 @@ async fn resolve_pasted_context_items(
                 }
             }
             ClipboardEntry::ExternalPaths(paths) => {
-                for path in paths.paths().iter() {
-                    if let Some((image, name)) = cx
-                        .background_spawn({
-                            let path = path.clone();
-                            let default_image_name = default_image_name.clone();
-                            async move {
-                                crate::mention_set::load_external_image_from_path(
-                                    &path,
-                                    &default_image_name,
-                                )
-                            }
-                        })
-                        .await
-                    {
-                        if supports_images {
-                            items.push(ResolvedPastedContextItem::Image(image, name));
-                        }
-                        continue;
-                    }
-
-                    if !project_is_local {
-                        continue;
-                    }
-
-                    let path = path.clone();
-                    let Ok(resolve_task) = cx.update({
-                        let project = project.clone();
-                        move |_, cx| Workspace::project_path_for_path(project, &path, false, cx)
-                    }) else {
-                        continue;
-                    };
-
-                    if let Some((worktree, project_path)) = resolve_task.await.log_err() {
-                        added_worktrees.push(worktree);
-                        items.push(ResolvedPastedContextItem::ProjectPath(project_path));
-                    }
-                }
+                let (mut path_items, mut path_worktrees, mut path_errors) =
+                    resolve_external_context_items(
+                        project.clone(),
+                        project_is_local,
+                        supports_images,
+                        supports_embedded_context,
+                        paths.paths().to_vec(),
+                        cx,
+                    )
+                    .await;
+                items.append(&mut path_items);
+                added_worktrees.append(&mut path_worktrees);
+                errors.append(&mut path_errors);
             }
         }
     }
 
-    (items, added_worktrees)
+    (items, added_worktrees, errors)
 }
 
 fn insert_project_path_as_context(
@@ -351,12 +414,17 @@ fn insert_project_path_as_context(
 async fn insert_resolved_pasted_context_items(
     items: Vec<ResolvedPastedContextItem>,
     added_worktrees: Vec<Entity<Worktree>>,
+    errors: Vec<anyhow::Error>,
     editor: Entity<Editor>,
     mention_set: Entity<MentionSet>,
     workspace: WeakEntity<Workspace>,
     supports_images: bool,
     cx: &mut gpui::AsyncWindowContext,
 ) {
+    for error in errors {
+        Err::<(), _>(error).notify_workspace_async_err(workspace.clone(), cx);
+    }
+
     let mut path_mention_tasks = Vec::new();
 
     for item in items {
@@ -367,6 +435,15 @@ async fn insert_resolved_pasted_context_items(
                     editor.clone(),
                     mention_set.clone(),
                     workspace.clone(),
+                    cx,
+                )
+                .await;
+            }
+            ResolvedPastedContextItem::Blob(blob) => {
+                crate::mention_set::insert_blobs_as_context(
+                    vec![blob],
+                    editor.clone(),
+                    mention_set.clone(),
                     cx,
                 )
                 .await;
@@ -824,6 +901,27 @@ impl MessageEditor {
                                     }
                                 }),
                             ),
+                            Mention::Blob(mention_blob) => {
+                                if supports_embedded_context {
+                                    acp::ContentBlock::Resource(acp::EmbeddedResource::new(
+                                        acp::EmbeddedResourceResource::BlobResourceContents(
+                                            acp::BlobResourceContents::new(
+                                                mention_blob.data.clone(),
+                                                uri.to_uri().to_string(),
+                                            )
+                                            .mime_type(Some(mention_blob.mime_type.to_string())),
+                                        ),
+                                    ))
+                                } else {
+                                    acp::ContentBlock::ResourceLink(
+                                        acp::ResourceLink::new(
+                                            uri.name(),
+                                            uri.to_uri().to_string(),
+                                        )
+                                        .mime_type(Some(mention_blob.mime_type.to_string())),
+                                    )
+                                }
+                            }
                             Mention::Link => acp::ContentBlock::ResourceLink(
                                 acp::ResourceLink::new(uri.name(), uri.to_uri().to_string()),
                             ),
@@ -1222,8 +1320,14 @@ impl MessageEditor {
         };
         let project = workspace.read(cx).project().clone();
         let project_is_local = project.read(cx).is_local();
-        let supports_images = self.session_capabilities.read().supports_images();
-        if !project_is_local && !supports_images {
+        let (supports_images, supports_embedded_context) = {
+            let session_capabilities = self.session_capabilities.read();
+            (
+                session_capabilities.supports_images(),
+                session_capabilities.supports_embedded_context(),
+            )
+        };
+        if !project_is_local && !supports_images && !supports_embedded_context {
             return false;
         }
         let editor = self.editor.clone();
@@ -1235,10 +1339,11 @@ impl MessageEditor {
 
         window
             .spawn(cx, async move |mut cx| {
-                let (items, added_worktrees) = resolve_pasted_context_items(
+                let (items, added_worktrees, errors) = resolve_pasted_context_items(
                     project,
                     project_is_local,
                     supports_images,
+                    supports_embedded_context,
                     entries,
                     &mut cx,
                 )
@@ -1246,6 +1351,7 @@ impl MessageEditor {
                 insert_resolved_pasted_context_items(
                     items,
                     added_worktrees,
+                    errors,
                     editor,
                     mention_set,
                     workspace,
@@ -1271,9 +1377,31 @@ impl MessageEditor {
             return;
         };
         let project = workspace.read(cx).project().clone();
-        let supports_images = self.session_capabilities.read().supports_images();
-        let mut tasks = Vec::new();
+        let (supports_images, supports_embedded_context) = {
+            let session_capabilities = self.session_capabilities.read();
+            (
+                session_capabilities.supports_images(),
+                session_capabilities.supports_embedded_context(),
+            )
+        };
+        let mut pdf_paths = Vec::new();
+        let mut project_paths = Vec::new();
         for path in paths {
+            let abs_path = project
+                .read(cx)
+                .worktree_for_id(path.worktree_id, cx)
+                .map(|worktree| worktree.read(cx).absolutize(&path.path));
+            if let Some(abs_path) = abs_path
+                && crate::mention_set::is_pdf_path(&abs_path)
+            {
+                pdf_paths.push(abs_path);
+            } else {
+                project_paths.push(path);
+            }
+        }
+
+        let mut tasks = Vec::new();
+        for path in project_paths {
             if let Some(task) = insert_mention_for_project_path(
                 &path,
                 MentionInsertPosition::EndOfBuffer,
@@ -1288,11 +1416,88 @@ impl MessageEditor {
                 tasks.push(task);
             }
         }
-        cx.spawn(async move |_, _| {
-            join_all(tasks).await;
-            drop(added_worktrees);
-        })
-        .detach();
+
+        let editor = self.editor.clone();
+        let mention_set = self.mention_set.clone();
+        let workspace = self.workspace.clone();
+        window
+            .spawn(cx, async move |mut cx| {
+                if !pdf_paths.is_empty() {
+                    let (items, pdf_worktrees, errors) = resolve_external_context_items(
+                        project,
+                        true,
+                        supports_images,
+                        supports_embedded_context,
+                        pdf_paths,
+                        &mut cx,
+                    )
+                    .await;
+                    insert_resolved_pasted_context_items(
+                        items,
+                        pdf_worktrees,
+                        errors,
+                        editor,
+                        mention_set,
+                        workspace,
+                        supports_images,
+                        &mut cx,
+                    )
+                    .await;
+                }
+                join_all(tasks).await;
+                drop(added_worktrees);
+                Ok::<(), anyhow::Error>(())
+            })
+            .detach_and_log_err(cx);
+    }
+
+    pub fn insert_external_paths(
+        &mut self,
+        paths: Vec<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let project = workspace.read(cx).project().clone();
+        let project_is_local = project.read(cx).is_local();
+        let (supports_images, supports_embedded_context) = {
+            let session_capabilities = self.session_capabilities.read();
+            (
+                session_capabilities.supports_images(),
+                session_capabilities.supports_embedded_context(),
+            )
+        };
+        let editor = self.editor.clone();
+        let mention_set = self.mention_set.clone();
+        let workspace = self.workspace.clone();
+
+        window
+            .spawn(cx, async move |mut cx| {
+                let (items, added_worktrees, errors) = resolve_external_context_items(
+                    project,
+                    project_is_local,
+                    supports_images,
+                    supports_embedded_context,
+                    paths,
+                    &mut cx,
+                )
+                .await;
+                insert_resolved_pasted_context_items(
+                    items,
+                    added_worktrees,
+                    errors,
+                    editor,
+                    mention_set,
+                    workspace,
+                    supports_images,
+                    &mut cx,
+                )
+                .await;
+                Ok::<(), anyhow::Error>(())
+            })
+            .detach_and_log_err(cx);
     }
 
     pub fn insert_branch_diff_crease(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1549,6 +1754,29 @@ impl MessageEditor {
                             content: resource.text,
                             tracked_buffers: Vec::new(),
                         },
+                    ));
+                }
+                acp::ContentBlock::Resource(acp::EmbeddedResource {
+                    resource: acp::EmbeddedResourceResource::BlobResourceContents(resource),
+                    ..
+                }) => {
+                    let Some(mention_uri) = MentionUri::parse(&resource.uri, path_style).log_err()
+                    else {
+                        continue;
+                    };
+                    let start = text.len();
+                    write!(&mut text, "{}", mention_uri.as_link()).ok();
+                    let end = text.len();
+                    mentions.push((
+                        start..end,
+                        mention_uri,
+                        Mention::Blob(crate::mention_set::MentionBlob {
+                            data: resource.blob.into(),
+                            mime_type: resource
+                                .mime_type
+                                .unwrap_or_else(|| "application/octet-stream".into())
+                                .into(),
+                        }),
                     ));
                 }
                 acp::ContentBlock::ResourceLink(resource) => {
@@ -4421,6 +4649,73 @@ mod tests {
         }));
     }
 
+    #[gpui::test]
+    async fn test_paste_external_pdf_path_inserts_blob_mention(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (message_editor, editor, mut cx) =
+            setup_paste_test_message_editor(json!({"file.txt": "content"}), cx).await;
+
+        message_editor.update(&mut cx, |message_editor, _cx| {
+            message_editor
+                .session_capabilities
+                .write()
+                .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+        });
+
+        let temporary_pdf_path = write_test_pdf_file();
+        paste_external_paths(&message_editor, vec![temporary_pdf_path.clone()], &mut cx);
+
+        let pdf_name = temporary_pdf_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("PDF")
+            .to_string();
+        std::fs::remove_file(&temporary_pdf_path).expect("remove temp pdf");
+
+        let expected_uri = MentionUri::PastedFile {
+            name: pdf_name.clone(),
+            mime_type: Some("application/pdf".to_string()),
+        }
+        .to_uri()
+        .to_string();
+
+        editor.update(&mut cx, |editor, cx| {
+            assert_eq!(editor.text(cx), format!("[@{pdf_name}]({expected_uri}) "));
+        });
+
+        let contents = mention_contents(&message_editor, &mut cx).await;
+        let [(uri, Mention::Blob(blob))] = contents.as_slice() else {
+            panic!("Unexpected mentions");
+        };
+        assert_eq!(
+            uri,
+            &MentionUri::PastedFile {
+                name: pdf_name,
+                mime_type: Some("application/pdf".to_string()),
+            }
+        );
+        assert_eq!(blob.mime_type.as_ref(), "application/pdf");
+        assert!(blob.data.as_ref().starts_with("JVBER"));
+
+        let (blocks, _) = message_editor
+            .update(&mut cx, |message_editor, cx| {
+                message_editor.contents(false, cx)
+            })
+            .await
+            .unwrap();
+        let [
+            acp::ContentBlock::Resource(acp::EmbeddedResource {
+                resource: acp::EmbeddedResourceResource::BlobResourceContents(resource),
+                ..
+            }),
+        ] = blocks.as_slice()
+        else {
+            panic!("Unexpected content blocks: {blocks:?}");
+        };
+        assert_eq!(resource.mime_type.as_deref(), Some("application/pdf"));
+        assert!(resource.blob.starts_with("JVBER"));
+    }
+
     async fn setup_paste_test_message_editor(
         project_tree: Value,
         cx: &mut TestAppContext,
@@ -4527,6 +4822,13 @@ mod tests {
         };
         let path = std::env::temp_dir().join(file_name);
         std::fs::write(&path, bytes).expect("write temp png");
+        path
+    }
+
+    fn write_test_pdf_file() -> PathBuf {
+        let file_name = format!("zed-agent-ui-test-{}.pdf", uuid::Uuid::new_v4());
+        let path = std::env::temp_dir().join(file_name);
+        std::fs::write(&path, b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n").expect("write temp pdf");
         path
     }
 

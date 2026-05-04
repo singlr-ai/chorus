@@ -3501,29 +3501,7 @@ impl AgentPanel {
                 }),
             )
             .on_drop(cx.listener(move |this, paths: &ExternalPaths, window, cx| {
-                let tasks = paths
-                    .paths()
-                    .iter()
-                    .map(|path| {
-                        Workspace::project_path_for_path(this.project.clone(), path, false, cx)
-                    })
-                    .collect::<Vec<_>>();
-                cx.spawn_in(window, async move |this, cx| {
-                    let mut paths = vec![];
-                    let mut added_worktrees = vec![];
-                    let opened_paths = futures::future::join_all(tasks).await;
-                    for entry in opened_paths {
-                        if let Some((worktree, project_path)) = entry.log_err() {
-                            added_worktrees.push(worktree);
-                            paths.push(project_path);
-                        }
-                    }
-                    this.update_in(cx, |this, window, cx| {
-                        this.handle_drop(paths, added_worktrees, window, cx);
-                    })
-                    .ok();
-                })
-                .detach();
+                this.handle_external_drop(paths.paths().to_vec(), window, cx);
             }))
     }
 
@@ -3538,6 +3516,22 @@ impl AgentPanel {
             BaseView::AgentThread { conversation_view } => {
                 conversation_view.update(cx, |conversation_view, cx| {
                     conversation_view.insert_dragged_files(paths, added_worktrees, window, cx);
+                });
+            }
+            BaseView::Uninitialized => {}
+        }
+    }
+
+    fn handle_external_drop(
+        &mut self,
+        paths: Vec<std::path::PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match &self.base_view {
+            BaseView::AgentThread { conversation_view } => {
+                conversation_view.update(cx, |conversation_view, cx| {
+                    conversation_view.insert_external_paths(paths, window, cx);
                 });
             }
             BaseView::Uninitialized => {}

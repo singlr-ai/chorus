@@ -4,6 +4,7 @@ use agent::{ThreadStore, outline};
 use agent_client_protocol::schema as acp;
 use agent_servers::{AgentServer, AgentServerDelegate};
 use anyhow::{Context as _, Result, anyhow};
+use base64::Engine as _;
 use collections::{HashMap, HashSet};
 use editor::{
     Anchor, Editor, EditorSnapshot, FoldPlaceholder, ToOffset,
@@ -49,6 +50,7 @@ pub enum Mention {
         tracked_buffers: Vec<Entity<Buffer>>,
     },
     Image(MentionImage),
+    Blob(MentionBlob),
     Link,
 }
 
@@ -56,6 +58,19 @@ pub enum Mention {
 pub struct MentionImage {
     pub data: SharedString,
     pub format: ImageFormat,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MentionBlob {
+    pub data: SharedString,
+    pub mime_type: SharedString,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ExternalBlob {
+    pub name: SharedString,
+    pub data: SharedString,
+    pub mime_type: SharedString,
 }
 
 pub struct MentionSet {
@@ -155,6 +170,7 @@ impl MentionSet {
                 "Untitled buffer selection mentions are not supported for paste"
             ))),
             MentionUri::PastedImage { .. }
+            | MentionUri::PastedFile { .. }
             | MentionUri::TerminalSelection { .. }
             | MentionUri::MergeConflict { .. } => {
                 Task::ready(Err(anyhow!("Unsupported mention URI type for paste")))
@@ -283,6 +299,12 @@ impl MentionSet {
                 debug_panic!("pasted image URI should not be included in completions");
                 Task::ready(Err(anyhow!(
                     "pasted imaged URI should not be included in completions"
+                )))
+            }
+            MentionUri::PastedFile { .. } => {
+                debug_panic!("pasted file URI should not be included in completions");
+                Task::ready(Err(anyhow!(
+                    "pasted file URI should not be included in completions"
                 )))
             }
             MentionUri::Selection { .. } => {
@@ -872,6 +894,14 @@ fn is_raster_image_path(path: &Path) -> bool {
         .any(|known| known.eq_ignore_ascii_case(extension))
 }
 
+pub(crate) const MAX_EXTERNAL_ATTACHMENT_BYTES: u64 = 25 * 1024 * 1024;
+
+pub(crate) fn is_pdf_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
+}
+
 pub(crate) fn load_external_image_from_path(
     path: &Path,
     default_name: &SharedString,
@@ -887,6 +917,99 @@ pub(crate) fn load_external_image_from_path(
         .unwrap_or_else(|| default_name.clone());
 
     Some((Image::from_bytes(format, content), name))
+}
+
+pub(crate) fn load_external_pdf_from_path(path: &Path) -> Result<Option<ExternalBlob>> {
+    if !is_pdf_path(path) {
+        return Ok(None);
+    }
+
+    let size = path.metadata()?.len();
+    if size > MAX_EXTERNAL_ATTACHMENT_BYTES {
+        return Err(anyhow!(
+            "{} is too large to attach. The limit is {} MB.",
+            path.display(),
+            MAX_EXTERNAL_ATTACHMENT_BYTES / 1024 / 1024
+        ));
+    }
+
+    let content = std::fs::read(path)?;
+    if !content.starts_with(b"%PDF-") {
+        return Err(anyhow!("{} is not a valid PDF file.", path.display()));
+    }
+
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| SharedString::from(name.to_owned()))
+        .unwrap_or_else(|| "PDF".into());
+
+    Ok(Some(ExternalBlob {
+        name,
+        data: base64::prelude::BASE64_STANDARD.encode(content).into(),
+        mime_type: "application/pdf".into(),
+    }))
+}
+
+pub(crate) async fn insert_blobs_as_context(
+    blobs: Vec<ExternalBlob>,
+    editor: Entity<Editor>,
+    mention_set: Entity<MentionSet>,
+    cx: &mut gpui::AsyncWindowContext,
+) {
+    for blob in blobs {
+        let mention_uri = MentionUri::PastedFile {
+            name: blob.name.to_string(),
+            mime_type: Some(blob.mime_type.to_string()),
+        };
+        let replacement_text = mention_uri.as_link().to_string();
+        let Some(text_anchor) = editor
+            .update_in(cx, |editor, window, cx| {
+                let snapshot = editor.snapshot(window, cx);
+                let (cursor_anchor, buffer_snapshot) = snapshot
+                    .buffer_snapshot()
+                    .anchor_to_buffer_anchor(editor.selections.newest_anchor().start)
+                    .unwrap();
+                let text_anchor = cursor_anchor.bias_left(buffer_snapshot);
+                editor.insert(&format!("{replacement_text} "), window, cx);
+                text_anchor
+            })
+            .ok()
+        else {
+            break;
+        };
+
+        let Ok(Some((crease_id, tx))) = cx.update(|window, cx| {
+            insert_crease_for_mention(
+                text_anchor,
+                replacement_text.len(),
+                blob.name.clone(),
+                IconName::FileDoc.path().into(),
+                Some(blob.mime_type.clone()),
+                Some(mention_uri.clone()),
+                None,
+                None,
+                editor.clone(),
+                window,
+                cx,
+            )
+        }) else {
+            continue;
+        };
+        drop(tx);
+
+        mention_set.update(cx, |mention_set, _cx| {
+            mention_set.insert_mention(
+                crease_id,
+                mention_uri,
+                Task::ready(Ok(Mention::Blob(MentionBlob {
+                    data: blob.data.clone(),
+                    mime_type: blob.mime_type.clone(),
+                })))
+                .shared(),
+            )
+        });
+    }
 }
 
 pub(crate) fn paste_images_as_context(
