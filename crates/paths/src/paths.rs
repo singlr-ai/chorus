@@ -1,4 +1,4 @@
-//! Paths to locations used by Chorus.
+//! Paths to locations used by Mast.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -11,10 +11,10 @@ use util::rel_path::RelPath;
 /// A default editorconfig file name to use when resolving project settings.
 pub const EDITORCONFIG_NAME: &str = ".editorconfig";
 
-const APP_DIR_NAME_LOWER: &str = "chorus";
-const APP_DIR_NAME_TITLE: &str = "Chorus";
-const APP_LOG_FILE_NAME: &str = "Chorus.log";
-const APP_OLD_LOG_FILE_NAME: &str = "Chorus.log.old";
+const APP_DIR_NAME_LOWER: &str = "mast";
+const APP_DIR_NAME_TITLE: &str = "Mast";
+const APP_LOG_FILE_NAME: &str = "Mast.log";
+const APP_OLD_LOG_FILE_NAME: &str = "Mast.log.old";
 
 /// A custom data directory override, set only by `set_custom_data_dir`.
 /// This is used to override the default data directory location.
@@ -23,22 +23,22 @@ static CUSTOM_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// The resolved data directory, combining custom override or platform defaults.
 /// This is set once and cached for subsequent calls.
-/// On macOS, this is `~/Library/Application Support/Chorus`.
-/// On Linux/FreeBSD, this is `$XDG_DATA_HOME/chorus`.
-/// On Windows, this is `%LOCALAPPDATA%\Chorus`.
+/// On macOS, this is `~/Library/Application Support/Mast`.
+/// On Linux/FreeBSD, this is `$XDG_DATA_HOME/mast`.
+/// On Windows, this is `%LOCALAPPDATA%\Mast`.
 static CURRENT_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// The resolved config directory, combining custom override or platform defaults.
 /// This is set once and cached for subsequent calls.
-/// On macOS, this is `~/.config/chorus`.
-/// On Linux/FreeBSD, this is `$XDG_CONFIG_HOME/chorus`.
-/// On Windows, this is `%APPDATA%\Chorus`.
+/// On macOS, this is `~/.config/mast`.
+/// On Linux/FreeBSD, this is `$XDG_CONFIG_HOME/mast`.
+/// On Windows, this is `%APPDATA%\Mast`.
 static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// Returns the relative path to the remote server directory on the SSH host.
 pub fn remote_server_dir_relative() -> &'static RelPath {
     static CACHED: LazyLock<&'static RelPath> =
-        LazyLock::new(|| RelPath::unix(".chorus_server").unwrap());
+        LazyLock::new(|| RelPath::unix(".mast_server").unwrap());
     *CACHED
 }
 
@@ -46,7 +46,7 @@ pub fn remote_server_dir_relative() -> &'static RelPath {
 /// Returns the relative path to the remote server directory on the WSL host.
 pub fn remote_wsl_server_dir_relative() -> &'static RelPath {
     static CACHED: LazyLock<&'static RelPath> =
-        LazyLock::new(|| RelPath::unix(".chorus_wsl_server").unwrap());
+        LazyLock::new(|| RelPath::unix(".mast_wsl_server").unwrap());
     *CACHED
 }
 
@@ -88,7 +88,7 @@ pub fn set_custom_data_dir(dir: &str) -> &'static PathBuf {
     })
 }
 
-/// Returns the path to the configuration directory used by Chorus.
+/// Returns the path to the configuration directory used by Mast.
 pub fn config_dir() -> &'static PathBuf {
     CONFIG_DIR.get_or_init(|| {
         if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
@@ -110,7 +110,7 @@ pub fn config_dir() -> &'static PathBuf {
     })
 }
 
-/// Returns the path to the data directory used by Chorus.
+/// Returns the path to the data directory used by Mast.
 pub fn data_dir() -> &'static PathBuf {
     CURRENT_DATA_DIR.get_or_init(|| {
         if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
@@ -162,7 +162,7 @@ pub fn state_dir() -> &'static PathBuf {
     })
 }
 
-/// Returns the path to the temp directory used by Chorus.
+/// Returns the path to the temp directory used by Mast.
 pub fn temp_dir() -> &'static PathBuf {
     static TEMP_DIR: OnceLock<PathBuf> = OnceLock::new();
     TEMP_DIR.get_or_init(|| {
@@ -215,13 +215,13 @@ pub fn remote_server_state_dir() -> &'static PathBuf {
     REMOTE_SERVER_STATE.get_or_init(|| data_dir().join("server_state"))
 }
 
-/// Returns the path to the `Chorus.log` file.
+/// Returns the path to the `Mast.log` file.
 pub fn log_file() -> &'static PathBuf {
     static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
     LOG_FILE.get_or_init(|| logs_dir().join(APP_LOG_FILE_NAME))
 }
 
-/// Returns the path to the `Chorus.log.old` file.
+/// Returns the path to the `Mast.log.old` file.
 pub fn old_log_file() -> &'static PathBuf {
     static OLD_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
     OLD_LOG_FILE.get_or_init(|| logs_dir().join(APP_OLD_LOG_FILE_NAME))
@@ -593,7 +593,7 @@ mod tests {
     use super::cli_socket_file_name;
 
     #[test]
-    fn cli_socket_file_name_uses_chorus_prefix() {
-        assert_eq!(cli_socket_file_name("stable"), "chorus-stable.sock");
+    fn cli_socket_file_name_uses_mast_prefix() {
+        assert_eq!(cli_socket_file_name("stable"), "mast-stable.sock");
     }
 }

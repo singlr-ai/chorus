@@ -7,16 +7,17 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "unstable.ui_density": "compact",
   "ui_font_size": 16,
   "buffer_font_size": 15,
   "theme": {
     "mode": "system",
-    "light": "JetBrains Light",
-    "dark": "JetBrains Dark",
+    "light": "Mast Light",
+    "dark": "Mast Dark",
   },
   "icon_theme": {
     "mode": "system",
-    "light": "JetBrains New UI Icons (Light)",
-    "dark": "JetBrains New UI Icons (Dark)",
+    "light": "Mast Icons (Light)",
+    "dark": "Mast Icons (Dark)",
   },
 }

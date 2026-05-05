@@ -8,18 +8,16 @@ use gpui::{App, Global};
 use semver::Version;
 
 /// The product name shared across release channels.
-pub const APP_NAME: &str = "Chorus";
+pub const APP_NAME: &str = "Mast";
 /// The primary URL scheme handled by the application.
-pub const APP_URL_SCHEME: &str = "chorus";
-/// The legacy URL scheme accepted for compatibility with upstream Zed links.
-pub const LEGACY_APP_URL_SCHEME: &str = "zed";
-/// The public repository for Chorus.
+pub const APP_URL_SCHEME: &str = "mast";
+/// The public repository for Mast.
 pub const REPOSITORY_URL: &str = "https://github.com/singlr-ai/chorus";
-/// The public issue tracker for Chorus.
+/// The public issue tracker for Mast.
 pub const ISSUE_TRACKER_URL: &str = "https://github.com/singlr-ai/chorus/issues";
-/// The public discussion forum for Chorus.
+/// The public discussion forum for Mast.
 pub const DISCUSSIONS_URL: &str = "https://github.com/singlr-ai/chorus/discussions";
-/// The default documentation landing page for Chorus.
+/// The default documentation landing page for Mast.
 pub const DOCUMENTATION_URL: &str = "https://github.com/singlr-ai/chorus#readme";
 
 /// stable | dev | nightly | preview
@@ -43,10 +41,10 @@ pub static RELEASE_CHANNEL: LazyLock<ReleaseChannel> =
 #[cfg(target_os = "windows")]
 pub fn app_identifier() -> &'static str {
     match *RELEASE_CHANNEL {
-        ReleaseChannel::Dev => "Chorus-Editor-Dev",
-        ReleaseChannel::Nightly => "Chorus-Editor-Nightly",
-        ReleaseChannel::Preview => "Chorus-Editor-Preview",
-        ReleaseChannel::Stable => "Chorus-Editor-Stable",
+        ReleaseChannel::Dev => "Mast-Editor-Dev",
+        ReleaseChannel::Nightly => "Mast-Editor-Nightly",
+        ReleaseChannel::Preview => "Mast-Editor-Preview",
+        ReleaseChannel::Stable => "Mast-Editor-Stable",
     }
 }
 
@@ -197,8 +195,8 @@ impl ReleaseChannel {
     pub fn display_name(&self) -> &'static str {
         match self {
             ReleaseChannel::Dev => APP_NAME,
-            ReleaseChannel::Nightly => "Chorus Nightly",
-            ReleaseChannel::Preview => "Chorus Preview",
+            ReleaseChannel::Nightly => "Mast Nightly",
+            ReleaseChannel::Preview => "Mast Preview",
             ReleaseChannel::Stable => APP_NAME,
         }
     }
@@ -218,10 +216,10 @@ impl ReleaseChannel {
     /// This also has to match the bundle identifier for Zed on macOS.
     pub fn app_id(&self) -> &'static str {
         match self {
-            ReleaseChannel::Dev => "ai.singlr.Chorus-Dev",
-            ReleaseChannel::Nightly => "ai.singlr.Chorus-Nightly",
-            ReleaseChannel::Preview => "ai.singlr.Chorus-Preview",
-            ReleaseChannel::Stable => "ai.singlr.Chorus",
+            ReleaseChannel::Dev => "ai.singlr.Mast-Dev",
+            ReleaseChannel::Nightly => "ai.singlr.Mast-Nightly",
+            ReleaseChannel::Preview => "ai.singlr.Mast-Preview",
+            ReleaseChannel::Stable => "ai.singlr.Mast",
         }
     }
 

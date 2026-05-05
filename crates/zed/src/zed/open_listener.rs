@@ -18,7 +18,7 @@ use gpui::{App, AsyncApp, Global, WindowHandle};
 use onboarding::FIRST_OPEN;
 use onboarding::show_onboarding_view;
 use recent_projects::{RemoteSettings, navigate_to_positions, open_remote_project};
-use release_channel::{APP_URL_SCHEME, LEGACY_APP_URL_SCHEME};
+use release_channel::APP_URL_SCHEME;
 use remote::{RemoteConnectionOptions, WslConnectionOptions};
 use settings::Settings;
 use std::path::{Path, PathBuf};
@@ -142,11 +142,11 @@ impl OpenRequest {
 
         for url in request.urls {
             if let Some(server_name) = strip_scheme(&url, APP_URL_SCHEME, "-cli://")
-                .or_else(|| strip_scheme(&url, LEGACY_APP_URL_SCHEME, "-cli://"))
+                .or_else(|| strip_scheme(&url, "zed", "-cli://"))
             {
                 this.kind = Some(OpenRequestKind::CliConnection(connect_to_cli(server_name)?));
             } else if let Some(action_index) = strip_scheme(&url, APP_URL_SCHEME, "-dock-action://")
-                .or_else(|| strip_scheme(&url, LEGACY_APP_URL_SCHEME, "-dock-action://"))
+                .or_else(|| strip_scheme(&url, "zed", "-dock-action://"))
             {
                 this.kind = Some(OpenRequestKind::DockMenuAction {
                     index: action_index.parse()?,
@@ -306,9 +306,9 @@ fn strip_scheme<'a>(url: &'a str, scheme: &str, suffix: &str) -> Option<&'a str>
 
 fn strip_app_url<'a>(url: &'a str, path: &str) -> Option<&'a str> {
     let primary = format!("{APP_URL_SCHEME}://{path}");
-    let legacy = format!("{LEGACY_APP_URL_SCHEME}://{path}");
+    let upstream = format!("zed://{path}");
     url.strip_prefix(&primary)
-        .or_else(|| url.strip_prefix(&legacy))
+        .or_else(|| url.strip_prefix(&upstream))
 }
 
 fn matches_app_url(url: &str, path: &str) -> bool {
@@ -1138,7 +1138,7 @@ mod tests {
         let request = cx.update(|cx| {
             OpenRequest::parse(
                 RawOpenRequest {
-                    urls: vec![format!("chorus://agent/shared/{session_id}")],
+                    urls: vec![format!("mast://agent/shared/{session_id}")],
                     ..Default::default()
                 },
                 cx,

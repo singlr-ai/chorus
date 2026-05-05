@@ -18,7 +18,7 @@ actions!(
 
 async fn install_script(cx: &AsyncApp) -> Result<PathBuf> {
     let cli_path = cx.update(|cx| cx.path_for_auxiliary_executable("cli"))?;
-    let link_path = Path::new("/usr/local/bin/chorus");
+    let link_path = Path::new("/usr/local/bin/mast");
     let bin_dir_path = link_path.parent().unwrap();
 
     // Don't re-create symlink if it points to the same CLI binary.
@@ -62,7 +62,7 @@ async fn install_script(cx: &AsyncApp) -> Result<PathBuf> {
 }
 
 pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
-    const LINUX_PROMPT_DETAIL: &str = "If you installed Chorus from an official release, add ~/.local/bin to your PATH.\n\nIf you installed Chorus from a different source like your package manager, then you may need to create an alias or symlink manually.";
+    const LINUX_PROMPT_DETAIL: &str = "If you installed Mast from an official release, add ~/.local/bin to your PATH.\n\nIf you installed Mast from a different source like your package manager, then you may need to create an alias or symlink manually.";
 
     cx.spawn_in(window, async move |workspace, cx| {
         if cfg!(any(target_os = "linux", target_os = "freebsd")) {
@@ -80,13 +80,13 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
             .context("error creating CLI symlink")?;
 
         workspace.update_in(cx, |workspace, _, cx| {
-            struct InstalledZedCli;
+            struct InstalledMastCli;
 
             workspace.show_toast(
                 Toast::new(
-                    NotificationId::unique::<InstalledZedCli>(),
+                    NotificationId::unique::<InstalledMastCli>(),
                     format!(
-                        "Installed `chorus` to {}. You can launch {} from your terminal.",
+                        "Installed `mast` to {}. You can launch {} from your terminal.",
                         path.to_string_lossy(),
                         ReleaseChannel::global(cx).display_name()
                     ),
@@ -97,5 +97,5 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
         register_zed_scheme(cx).await.log_err();
         Ok(())
     })
-    .detach_and_prompt_err("Error installing Chorus CLI", window, cx, |_, _, _| None);
+    .detach_and_prompt_err("Error installing Mast CLI", window, cx, |_, _, _| None);
 }

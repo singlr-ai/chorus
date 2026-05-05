@@ -75,7 +75,7 @@ if [[ $# -gt 0 && -n "$1" ]]; then
 fi
 arch_suffix=""
 remote_server_bundle_dir="target/remote-servers"
-prebuilt_remote_server_archives_dir="${CHORUS_PREBUILT_REMOTE_SERVER_ARCHIVES_DIR:-${ZED_PREBUILT_REMOTE_SERVER_ARCHIVES_DIR:-}}"
+prebuilt_remote_server_archives_dir="${MAST_PREBUILT_REMOTE_SERVER_ARCHIVES_DIR:-${ZED_PREBUILT_REMOTE_SERVER_ARCHIVES_DIR:-}}"
 
 if [[ "$target_triple" = "x86_64-apple-darwin" ]]; then
     arch_suffix="x86_64"
@@ -91,8 +91,8 @@ script/generate-licenses
 
 rustup target add $target_triple
 
-echo "Compiling Chorus binaries"
-cargo build ${build_flag} --package zed --bin chorus --target $target_triple
+echo "Compiling Mast binaries"
+cargo build ${build_flag} --package zed --bin mast --target $target_triple
 cargo build ${build_flag} --package cli --target $target_triple
 if [ "$app_only" = false ]; then
     # Build remote_server in separate invocation to prevent feature unification from other crates
@@ -202,7 +202,7 @@ function build_remote_server_archive() {
     local platform_os=$2
     local platform_arch=$3
     local binary_path="target/${target}/${target_dir}/remote_server"
-    local archive_path="${remote_server_bundle_dir}/chorus-remote-server-${platform_os}-${platform_arch}.gz"
+    local archive_path="${remote_server_bundle_dir}/mast-remote-server-${platform_os}-${platform_arch}.gz"
 
     rustup target add "$target"
 
@@ -286,7 +286,7 @@ function sign_app_binaries() {
         # sequence of codesign commands modeled after this example: https://developer.apple.com/forums/thread/701514
         /usr/bin/codesign --deep --force --timestamp --options runtime --sign "$IDENTITY" "${app_path}/Contents/MacOS/cli" -v
         /usr/bin/codesign --deep --force --timestamp --options runtime --sign "$IDENTITY" "${app_path}/Contents/MacOS/git" -v
-        /usr/bin/codesign --deep --force --timestamp --options runtime --entitlements crates/zed/resources/zed.entitlements --sign "$IDENTITY" "${app_path}/Contents/MacOS/chorus" -v
+        /usr/bin/codesign --deep --force --timestamp --options runtime --entitlements crates/zed/resources/zed.entitlements --sign "$IDENTITY" "${app_path}/Contents/MacOS/mast" -v
         /usr/bin/codesign --force --timestamp --options runtime --entitlements crates/zed/resources/zed.entitlements --sign "$IDENTITY" "${app_path}" -v
     else
         echo "One or more of the following variables are missing: MACOS_CERTIFICATE, MACOS_CERTIFICATE_PASSWORD, APPLE_NOTARIZATION_KEY, APPLE_NOTARIZATION_KEY_ID, APPLE_NOTARIZATION_ISSUER_ID"
@@ -332,7 +332,7 @@ function sign_app_binaries() {
     else
         dmg_target_directory="target/${target_triple}/${target_dir}"
         dmg_source_directory="${dmg_target_directory}/dmg"
-        dmg_file_path="${dmg_target_directory}/Chorus-${arch_suffix}.dmg"
+        dmg_file_path="${dmg_target_directory}/Mast-${arch_suffix}.dmg"
         xcode_bin_dir_path="$(xcode-select -p)/usr/bin"
 
         rm -rf ${dmg_source_directory}
@@ -344,7 +344,7 @@ function sign_app_binaries() {
         ln -s /Applications ${dmg_source_directory}
 
         echo "Creating final DMG at ${dmg_file_path} using ${dmg_source_directory}"
-        hdiutil create -volname Chorus -srcfolder "${dmg_source_directory}" -ov -format UDZO "${dmg_file_path}"
+        hdiutil create -volname Mast -srcfolder "${dmg_source_directory}" -ov -format UDZO "${dmg_file_path}"
 
         # If someone runs this bundle script locally, a symlink will be placed in `dmg_source_directory`.
         # This symlink causes CPU issues if the project being worked on is also the app source tree, so we simply remove it for now.
@@ -383,13 +383,13 @@ function upload_debug_symbols() {
     if [ "$local_install" = true ]; then
         echo "local install; skipping sentry upload."
     elif [[ -n "${SENTRY_AUTH_TOKEN:-}" ]]; then
-        echo "Uploading Chorus debug symbols to sentry..."
-        if ! dsymutil --flat "target/${target_triple}/${target_dir}/chorus" 2> target/dsymutil.log; then
+        echo "Uploading Mast debug symbols to sentry..."
+        if ! dsymutil --flat "target/${target_triple}/${target_dir}/mast" 2> target/dsymutil.log; then
             echo "dsymutil failed"
             cat target/dsymutil.log
             exit 1
         fi
-        sentry_files=("target/${target_triple}/${target_dir}/chorus.dwarf")
+        sentry_files=("target/${target_triple}/${target_dir}/mast.dwarf")
         if [ "$app_only" = false ]; then
             if ! dsymutil --flat "target/${target_triple}/${target_dir}/remote_server" 2> target/dsymutil.log; then
                 echo "dsymutil failed"
@@ -423,7 +423,7 @@ upload_debug_symbols
 
 prepare_remote_server_archives
 
-cp target/${target_triple}/${target_dir}/chorus "${app_path}/Contents/MacOS/chorus"
+cp target/${target_triple}/${target_dir}/mast "${app_path}/Contents/MacOS/mast"
 cp target/${target_triple}/${target_dir}/cli "${app_path}/Contents/MacOS/cli"
 copy_remote_server_archives_into_app
 sign_app_binaries
@@ -431,5 +431,5 @@ sign_app_binaries
 if [ "$app_only" = false ]; then
     remote_server_path="target/${target_triple}/${target_dir}/remote_server"
     sign_binary "${remote_server_path}"
-    gzip -f --stdout --best "${remote_server_path}" > "target/chorus-remote-server-macos-${arch_suffix}.gz"
+    gzip -f --stdout --best "${remote_server_path}" > "target/mast-remote-server-macos-${arch_suffix}.gz"
 fi

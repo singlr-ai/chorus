@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-# Downloads a Chorus release bundle and unpacks it into ~/.local/.
+# Downloads a Mast release bundle and unpacks it into ~/.local/.
 
 main() {
     platform="$(uname -s)"
@@ -10,9 +10,9 @@ main() {
     ZED_VERSION="${ZED_VERSION:-latest}"
     # Use TMPDIR if available (for environments with non-standard temp directories)
     if [ -n "${TMPDIR:-}" ] && [ -d "${TMPDIR}" ]; then
-        temp="$(mktemp -d "$TMPDIR/chorus-XXXXXX")"
+        temp="$(mktemp -d "$TMPDIR/mast-XXXXXX")"
     else
-        temp="$(mktemp -d "/tmp/chorus-XXXXXX")"
+        temp="$(mktemp -d "/tmp/mast-XXXXXX")"
     fi
 
     if [ "$platform" = "Darwin" ]; then
@@ -52,10 +52,10 @@ main() {
 
     "$platform" "$@"
 
-    if [ "$(command -v chorus)" = "$HOME/.local/bin/chorus" ]; then
-        echo "Chorus has been installed. Run with 'chorus'"
+    if [ "$(command -v mast)" = "$HOME/.local/bin/mast" ]; then
+        echo "Mast has been installed. Run with 'mast'"
     else
-        echo "To run Chorus from your terminal, you must add ~/.local/bin to your PATH"
+        echo "To run Mast from your terminal, you must add ~/.local/bin to your PATH"
         echo "Run:"
 
         case "$SHELL" in
@@ -72,7 +72,7 @@ main() {
                 ;;
         esac
 
-        echo "To run Chorus now, '~/.local/bin/chorus'"
+        echo "To run Mast now, '~/.local/bin/mast'"
     fi
 }
 
@@ -92,10 +92,10 @@ release_base_url() {
 
 linux() {
     if [ -n "${ZED_BUNDLE_PATH:-}" ]; then
-        cp "$ZED_BUNDLE_PATH" "$temp/chorus-linux-$arch.tar.gz"
+        cp "$ZED_BUNDLE_PATH" "$temp/mast-linux-$arch.tar.gz"
     else
-        echo "Downloading Chorus version: $ZED_VERSION"
-        curl "$(release_base_url)/chorus-linux-$arch.tar.gz" > "$temp/chorus-linux-$arch.tar.gz"
+        echo "Downloading Mast version: $ZED_VERSION"
+        curl "$(release_base_url)/mast-linux-$arch.tar.gz" > "$temp/mast-linux-$arch.tar.gz"
     fi
 
     suffix=""
@@ -106,54 +106,54 @@ linux() {
     appid=""
     case "$channel" in
       stable)
-        appid="ai.singlr.Chorus"
+        appid="ai.singlr.Mast"
         ;;
       nightly)
-        appid="ai.singlr.Chorus-Nightly"
+        appid="ai.singlr.Mast-Nightly"
         ;;
       preview)
-        appid="ai.singlr.Chorus-Preview"
+        appid="ai.singlr.Mast-Preview"
         ;;
       dev)
-        appid="ai.singlr.Chorus-Dev"
+        appid="ai.singlr.Mast-Dev"
         ;;
       *)
         echo "Unknown release channel: ${channel}. Using stable app ID."
-        appid="ai.singlr.Chorus"
+        appid="ai.singlr.Mast"
         ;;
     esac
 
     # Unpack
-    rm -rf "$HOME/.local/chorus$suffix.app"
-    mkdir -p "$HOME/.local/chorus$suffix.app"
-    tar -xzf "$temp/chorus-linux-$arch.tar.gz" -C "$HOME/.local/"
+    rm -rf "$HOME/.local/mast$suffix.app"
+    mkdir -p "$HOME/.local/mast$suffix.app"
+    tar -xzf "$temp/mast-linux-$arch.tar.gz" -C "$HOME/.local/"
 
     # Setup ~/.local directories
     mkdir -p "$HOME/.local/bin" "$HOME/.local/share/applications"
 
     # Link the binary
-    if [ -f "$HOME/.local/chorus$suffix.app/bin/chorus" ]; then
-        ln -sf "$HOME/.local/chorus$suffix.app/bin/chorus" "$HOME/.local/bin/chorus"
+    if [ -f "$HOME/.local/mast$suffix.app/bin/mast" ]; then
+        ln -sf "$HOME/.local/mast$suffix.app/bin/mast" "$HOME/.local/bin/mast"
     else
-        ln -sf "$HOME/.local/chorus$suffix.app/bin/cli" "$HOME/.local/bin/chorus"
+        ln -sf "$HOME/.local/mast$suffix.app/bin/cli" "$HOME/.local/bin/mast"
     fi
 
     # Copy .desktop file
     desktop_file_path="$HOME/.local/share/applications/${appid}.desktop"
-    src_dir="$HOME/.local/chorus$suffix.app/share/applications"
+    src_dir="$HOME/.local/mast$suffix.app/share/applications"
     if [ -f "$src_dir/${appid}.desktop" ]; then
         cp "$src_dir/${appid}.desktop" "${desktop_file_path}"
     else
-        cp "$src_dir/chorus$suffix.desktop" "${desktop_file_path}"
+        cp "$src_dir/mast$suffix.desktop" "${desktop_file_path}"
     fi
-    sed -i "s|Icon=chorus|Icon=$HOME/.local/chorus$suffix.app/share/icons/hicolor/512x512/apps/chorus.png|g" "${desktop_file_path}"
-    sed -i "s|Exec=chorus|Exec=$HOME/.local/chorus$suffix.app/bin/chorus|g" "${desktop_file_path}"
+    sed -i "s|Icon=mast|Icon=$HOME/.local/mast$suffix.app/share/icons/hicolor/512x512/apps/mast.png|g" "${desktop_file_path}"
+    sed -i "s|Exec=mast|Exec=$HOME/.local/mast$suffix.app/bin/mast|g" "${desktop_file_path}"
 }
 
 macos() {
-    echo "Downloading Chorus version: $ZED_VERSION"
-    curl "$(release_base_url)/Chorus-$arch.dmg" > "$temp/Chorus-$arch.dmg"
-    hdiutil attach -quiet "$temp/Chorus-$arch.dmg" -mountpoint "$temp/mount"
+    echo "Downloading Mast version: $ZED_VERSION"
+    curl "$(release_base_url)/Mast-$arch.dmg" > "$temp/Mast-$arch.dmg"
+    hdiutil attach -quiet "$temp/Mast-$arch.dmg" -mountpoint "$temp/mount"
     app="$(cd "$temp/mount/"; echo *.app)"
     echo "Installing $app"
     if [ -d "/Applications/$app" ]; then
@@ -165,7 +165,7 @@ macos() {
 
     mkdir -p "$HOME/.local/bin"
     # Link the binary
-    ln -sf "/Applications/$app/Contents/MacOS/cli" "$HOME/.local/bin/chorus"
+    ln -sf "/Applications/$app/Contents/MacOS/cli" "$HOME/.local/bin/mast"
 }
 
 main "$@"

@@ -19,7 +19,7 @@ struct RawSingClientConfig {
 
 impl SingClientConfig {
     pub fn default_path() -> PathBuf {
-        home_dir().join(".sing").join("config.yaml")
+        home_dir().join(".sail").join("config.yaml")
     }
 
     pub fn load() -> Result<Self, SingBridgeError> {

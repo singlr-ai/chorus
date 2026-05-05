@@ -1,25 +1,25 @@
 #!/usr/bin/env sh
 set -eu
 
-# Uninstalls Chorus that was installed using the install.sh script
+# Uninstalls Mast that was installed using the install.sh script
 
 check_remaining_installations() {
     platform="$(uname -s)"
     if [ "$platform" = "Darwin" ]; then
-        remaining=$(ls -d /Applications/Chorus*.app 2>/dev/null | wc -l)
+        remaining=$(ls -d /Applications/Mast*.app 2>/dev/null | wc -l)
         [ "$remaining" -eq 0 ]
     else
-        remaining=$(ls -d "$HOME/.local/chorus"*.app 2>/dev/null | wc -l)
+        remaining=$(ls -d "$HOME/.local/mast"*.app 2>/dev/null | wc -l)
         [ "$remaining" -eq 0 ]
     fi
 }
 
 prompt_remove_preferences() {
-    printf "Do you want to keep your Chorus preferences? [Y/n] "
+    printf "Do you want to keep your Mast preferences? [Y/n] "
     read -r response
     case "$response" in
         [nN]|[nN][oO])
-            rm -rf "$HOME/.config/chorus"
+            rm -rf "$HOME/.config/mast"
             echo "Preferences removed."
             ;;
         *)
@@ -43,7 +43,7 @@ main() {
 
     "$platform"
 
-    echo "Chorus has been uninstalled"
+    echo "Mast has been uninstalled"
 }
 
 linux() {
@@ -56,71 +56,71 @@ linux() {
     db_suffix="stable"
     case "$channel" in
       stable)
-        appid="ai.singlr.Chorus"
+        appid="ai.singlr.Mast"
         db_suffix="stable"
         ;;
       nightly)
-        appid="ai.singlr.Chorus-Nightly"
+        appid="ai.singlr.Mast-Nightly"
         db_suffix="nightly"
         ;;
       preview)
-        appid="ai.singlr.Chorus-Preview"
+        appid="ai.singlr.Mast-Preview"
         db_suffix="preview"
         ;;
       dev)
-        appid="ai.singlr.Chorus-Dev"
+        appid="ai.singlr.Mast-Dev"
         db_suffix="dev"
         ;;
       *)
         echo "Unknown release channel: ${channel}. Using stable app ID."
-        appid="ai.singlr.Chorus"
+        appid="ai.singlr.Mast"
         db_suffix="stable"
         ;;
     esac
 
     # Remove the app directory
-    rm -rf "$HOME/.local/chorus$suffix.app"
+    rm -rf "$HOME/.local/mast$suffix.app"
 
     # Remove the binary symlink
-    rm -f "$HOME/.local/bin/chorus"
+    rm -f "$HOME/.local/bin/mast"
 
     # Remove the .desktop file
     rm -f "$HOME/.local/share/applications/${appid}.desktop"
 
     # Remove the database directory for this channel
-    rm -rf "$HOME/.local/share/chorus/db/0-$db_suffix"
+    rm -rf "$HOME/.local/share/mast/db/0-$db_suffix"
 
     # Remove socket file
-    rm -f "$HOME/.local/share/chorus/chorus-$db_suffix.sock"
+    rm -f "$HOME/.local/share/mast/mast-$db_suffix.sock"
 
-    # Remove the entire Chorus directory if no installations remain
+    # Remove the entire Mast directory if no installations remain
     if check_remaining_installations; then
-        rm -rf "$HOME/.local/share/chorus"
+        rm -rf "$HOME/.local/share/mast"
         prompt_remove_preferences
     fi
 
-    rm -rf $HOME/.chorus_server
+    rm -rf $HOME/.mast_server
 }
 
 macos() {
-    app="Chorus.app"
+    app="Mast.app"
     db_suffix="stable"
-    app_id="ai.singlr.Chorus"
+    app_id="ai.singlr.Mast"
     case "$channel" in
       nightly)
-        app="Chorus Nightly.app"
+        app="Mast Nightly.app"
         db_suffix="nightly"
-        app_id="ai.singlr.Chorus-Nightly"
+        app_id="ai.singlr.Mast-Nightly"
         ;;
       preview)
-        app="Chorus Preview.app"
+        app="Mast Preview.app"
         db_suffix="preview"
-        app_id="ai.singlr.Chorus-Preview"
+        app_id="ai.singlr.Mast-Preview"
         ;;
       dev)
-        app="Chorus.app"
+        app="Mast.app"
         db_suffix="dev"
-        app_id="ai.singlr.Chorus-Dev"
+        app_id="ai.singlr.Mast-Dev"
         ;;
     esac
 
@@ -130,10 +130,10 @@ macos() {
     fi
 
     # Remove the binary symlink
-    rm -f "$HOME/.local/bin/chorus"
+    rm -f "$HOME/.local/bin/mast"
 
     # Remove the database directory for this channel
-    rm -rf "$HOME/Library/Application Support/Chorus/db/0-$db_suffix"
+    rm -rf "$HOME/Library/Application Support/Mast/db/0-$db_suffix"
 
     # Remove app-specific files and directories
     rm -rf "$HOME/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/$app_id.sfl"*
@@ -142,15 +142,15 @@ macos() {
     rm -rf "$HOME/Library/Preferences/$app_id.plist"
     rm -rf "$HOME/Library/Saved Application State/$app_id.savedState"
 
-    # Remove the entire Chorus directory if no installations remain
+    # Remove the entire Mast directory if no installations remain
     if check_remaining_installations; then
-        rm -rf "$HOME/Library/Application Support/Chorus"
-        rm -rf "$HOME/Library/Logs/Chorus"
+        rm -rf "$HOME/Library/Application Support/Mast"
+        rm -rf "$HOME/Library/Logs/Mast"
 
         prompt_remove_preferences
     fi
 
-    rm -rf $HOME/.chorus_server
+    rm -rf $HOME/.mast_server
 }
 
 main "$@"

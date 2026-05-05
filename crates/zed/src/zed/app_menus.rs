@@ -313,7 +313,13 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                         url: DOCUMENTATION_URL.into(),
                     },
                 ),
-                MenuItem::action("Chorus Repository", feedback::OpenZedRepo),
+                MenuItem::action("Mast Repository", feedback::OpenZedRepo),
+                MenuItem::action(
+                    "Zed Project",
+                    super::OpenBrowser {
+                        url: "https://zed.dev".into(),
+                    },
+                ),
                 MenuItem::action(
                     "Community Discussions",
                     super::OpenBrowser {

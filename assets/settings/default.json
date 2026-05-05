@@ -1,5 +1,5 @@
 {
-  "$schema": "chorus://schemas/settings",
+  "$schema": "mast://schemas/settings",
   /// The displayed name of this project. If not set or null, the root directory name
   /// will be displayed.
   "project_name": null,
@@ -11,14 +11,15 @@
   // - "dark": Use the theme indicated by the "dark" field
   "theme": {
     "mode": "system",
-    "light": "JetBrains Light",
-    "dark": "JetBrains Dark",
+    "light": "Mast Light",
+    "dark": "Mast Dark",
   },
   "icon_theme": {
     "mode": "system",
-    "light": "JetBrains New UI Icons (Light)",
-    "dark": "JetBrains New UI Icons (Dark)",
+    "light": "Mast Icons (Light)",
+    "dark": "Mast Icons (Dark)",
   },
+  "unstable.ui_density": "compact",
   // The name of a base set of key bindings to use.
   // This setting can take six values, each named after another
   // text editor:

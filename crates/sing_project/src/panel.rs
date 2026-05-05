@@ -123,7 +123,7 @@ impl SingProjectPanel {
                 let kvp = cx.update(|_, cx| KeyValueStore::global(cx))?;
                 cx.background_spawn(async move { kvp.read_kvp(&serialization_key) })
                     .await
-                    .context("loading sing project panel")
+                    .context("loading SAIL project panel")
                     .log_err()
                     .flatten()
                     .map(|panel| serde_json::from_str::<SerializedSingProjectPanel>(&panel))
@@ -944,7 +944,7 @@ impl SingProjectPanel {
                                 .label_size(LabelSize::Small)
                                 .loading(start_pending)
                                 .disabled(open_pending || stop_pending)
-                                .tooltip(Tooltip::text("Run sing up for this project"))
+                                .tooltip(Tooltip::text("Run sail up for this project"))
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
                                         this.start_project(project_name.clone(), window, cx);
@@ -960,7 +960,7 @@ impl SingProjectPanel {
                                     .label_size(LabelSize::Small)
                                     .loading(stop_pending)
                                     .disabled(open_pending || start_pending)
-                                    .tooltip(Tooltip::text("Run sing down for this project"))
+                                    .tooltip(Tooltip::text("Run sail down for this project"))
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.stop_project(project_name.clone(), window, cx);
                                     })),

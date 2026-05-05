@@ -54,11 +54,11 @@ pub enum SingCommandError {
     SpawnFailed { command: String, message: String },
     #[error("invalid command arguments for {command}: {message}")]
     InvalidCommand { command: String, message: String },
-    #[error("sing command timed out after {timeout:?}: {command}")]
+    #[error("SAIL command timed out after {timeout:?}: {command}")]
     Timeout { command: String, timeout: Duration },
     #[error("ssh authentication failed for {host}")]
     AuthenticationFailed { host: String, stderr: String },
-    #[error("unable to reach sing host {host}")]
+    #[error("unable to reach SAIL host {host}")]
     ConnectionFailed { host: String, stderr: String },
     #[error(transparent)]
     RemoteFailure(#[from] RemoteFailure),
@@ -66,11 +66,11 @@ pub enum SingCommandError {
 
 #[derive(Debug, Error)]
 pub enum SingBridgeError {
-    #[error("sing client config not found at {path}")]
+    #[error("SAIL client config not found at {path}")]
     ConfigNotFound { path: PathBuf },
-    #[error("failed to read sing client config at {path}: {message}")]
+    #[error("failed to read SAIL client config at {path}: {message}")]
     ConfigRead { path: PathBuf, message: String },
-    #[error("invalid sing client config at {path}: {message}")]
+    #[error("invalid SAIL client config at {path}: {message}")]
     InvalidConfig { path: PathBuf, message: String },
     #[error("invalid {field}: {message}")]
     InvalidInput {
@@ -94,11 +94,11 @@ pub enum SingBridgeError {
         #[source]
         source: serde_json::Error,
     },
-    #[error("sing API is unavailable: {message}")]
+    #[error("SAIL API is unavailable: {message}")]
     ApiUnavailable { message: String },
-    #[error("sing API request failed for {path}: {message}")]
+    #[error("SAIL API request failed for {path}: {message}")]
     ApiRequest { path: String, message: String },
-    #[error("sing API returned {status} for {path}: {code}: {message}")]
+    #[error("SAIL API returned {status} for {path}: {code}: {message}")]
     ApiFailure {
         path: String,
         status: u16,

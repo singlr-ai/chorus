@@ -687,7 +687,7 @@ fn show_software_emulation_warning_if_needed(
         };
         let message = format!(
             db::indoc! {r#"
-            Chorus uses {} for rendering and requires a compatible GPU.
+            Mast uses {} for rendering and requires a compatible GPU.
 
             Currently you are using a software emulated GPU ({}) which
             will result in awful performance.
@@ -1111,7 +1111,7 @@ fn register_actions(
                 Ok(())
             })
             .detach_and_prompt_err(
-                "Error registering chorus:// scheme",
+                "Error registering mast:// scheme",
                 window,
                 cx,
                 |_, _, _| None,
@@ -1375,6 +1375,7 @@ fn open_about_window(cx: &mut App) {
         copy_entry: NavigableEntry,
         app_icon: Arc<Image>,
         message: SharedString,
+        attribution: SharedString,
         commit: Option<SharedString>,
         full_version: SharedString,
     }
@@ -1392,6 +1393,7 @@ fn open_about_window(cx: &mut App) {
                 ""
             };
             let message: SharedString = format!("{release_channel_name} {version} {debug}").into();
+            let attribution: SharedString = "Mast by SAIL, built on Zed".into();
             let commit = AppCommitSha::try_global(cx)
                 .map(|sha| sha.full())
                 .filter(|commit| !commit.is_empty())
@@ -1403,6 +1405,7 @@ fn open_about_window(cx: &mut App) {
                 copy_entry: NavigableEntry::focusable(cx),
                 app_icon: about_window_icon(release_channel),
                 message,
+                attribution,
                 commit,
                 full_version,
             }
@@ -1412,11 +1415,14 @@ fn open_about_window(cx: &mut App) {
             let content = match self.commit.as_ref() {
                 Some(commit) => {
                     format!(
-                        "{}\nCommit: {}\nVersion: {}",
-                        self.message, commit, self.full_version
+                        "{}\n{}\nCommit: {}\nVersion: {}",
+                        self.message, self.attribution, commit, self.full_version
                     )
                 }
-                None => format!("{}\nVersion: {}", self.message, self.full_version),
+                None => format!(
+                    "{}\n{}\nVersion: {}",
+                    self.message, self.attribution, self.full_version
+                ),
             };
             cx.write_to_clipboard(ClipboardItem::new_string(content));
             window.remove_window();
@@ -1451,6 +1457,11 @@ fn open_about_window(cx: &mut App) {
                             .items_center()
                             .child(img(self.app_icon.clone()).size_16().flex_none())
                             .child(Headline::new(self.message.clone()))
+                            .child(
+                                Label::new(self.attribution.clone())
+                                    .color(Color::Muted)
+                                    .size(LabelSize::Small),
+                            )
                             .when_some(self.commit.clone(), |this, commit| {
                                 this.child(
                                     Label::new("Commit")

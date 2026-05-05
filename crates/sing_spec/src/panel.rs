@@ -147,7 +147,7 @@ impl SingSpecBoardPanel {
                 let kvp = cx.update(|_, cx| KeyValueStore::global(cx))?;
                 cx.background_spawn(async move { kvp.read_kvp(&serialization_key) })
                     .await
-                    .context("loading sing spec board panel")
+                    .context("loading SAIL spec board panel")
                     .log_err()
                     .flatten()
                     .map(|panel| serde_json::from_str::<SerializedSingSpecBoardPanel>(&panel))

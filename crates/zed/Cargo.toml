@@ -7,7 +7,7 @@ version = "1.2.0"
 publish.workspace = true
 license = "GPL-3.0-or-later"
 authors = ["Zed Team <hi@zed.dev>"]
-default-run = "chorus"
+default-run = "mast"
 
 [lints]
 workspace = true
@@ -55,7 +55,7 @@ visual-tests = [
 ]
 
 [[bin]]
-name = "chorus"
+name = "mast"
 path = "src/main.rs"
 
 [[bin]]
@@ -281,35 +281,35 @@ repl = { workspace = true, features = ["test-support"] }
 
 [package.metadata.bundle-dev]
 icon = ["resources/app-icon-dev@2x.png", "resources/app-icon-dev.png"]
-identifier = "ai.singlr.Chorus-Dev"
-name = "Chorus"
+identifier = "ai.singlr.Mast-Dev"
+name = "Mast"
 osx_minimum_system_version = "10.15.7"
 osx_info_plist_exts = ["resources/info/*"]
-osx_url_schemes = ["chorus"]
+osx_url_schemes = ["mast"]
 
 [package.metadata.bundle-nightly]
 icon = ["resources/app-icon-nightly@2x.png", "resources/app-icon-nightly.png"]
-identifier = "ai.singlr.Chorus-Nightly"
-name = "Chorus Nightly"
+identifier = "ai.singlr.Mast-Nightly"
+name = "Mast Nightly"
 osx_minimum_system_version = "10.15.7"
 osx_info_plist_exts = ["resources/info/*"]
-osx_url_schemes = ["chorus"]
+osx_url_schemes = ["mast"]
 
 [package.metadata.bundle-preview]
 icon = ["resources/app-icon-preview@2x.png", "resources/app-icon-preview.png"]
-identifier = "ai.singlr.Chorus-Preview"
-name = "Chorus Preview"
+identifier = "ai.singlr.Mast-Preview"
+name = "Mast Preview"
 osx_minimum_system_version = "10.15.7"
 osx_info_plist_exts = ["resources/info/*"]
-osx_url_schemes = ["chorus"]
+osx_url_schemes = ["mast"]
 
 [package.metadata.bundle-stable]
 icon = ["resources/app-icon@2x.png", "resources/app-icon.png"]
-identifier = "ai.singlr.Chorus"
-name = "Chorus"
+identifier = "ai.singlr.Mast"
+name = "Mast"
 osx_minimum_system_version = "10.15.7"
 osx_info_plist_exts = ["resources/info/*"]
-osx_url_schemes = ["chorus"]
+osx_url_schemes = ["mast"]
 
 [package.metadata.cargo-machete]
 ignored = ["profiling", "zstd", "tracing"]
