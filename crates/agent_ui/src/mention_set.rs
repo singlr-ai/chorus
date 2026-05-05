@@ -663,7 +663,7 @@ mod tests {
     use semver::Version;
     use serde_json::json;
     use settings::SettingsStore;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use theme;
     use util::path;
 
@@ -756,6 +756,49 @@ mod tests {
         // Non-image extensions and paths with no extension.
         assert!(!is_raster_image_path(Path::new("/tmp/notes.txt")));
         assert!(!is_raster_image_path(Path::new("/tmp/README")));
+    }
+
+    #[test]
+    fn test_load_external_image_rejects_invalid_image_extension() {
+        let path = temp_path("png");
+        std::fs::write(&path, b"not an image").expect("write temp image");
+
+        let result = load_external_image_from_path(&path, &"Image".into());
+        std::fs::remove_file(&path).expect("remove temp image");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_external_image_ignores_non_image_extension() {
+        let path = temp_path("txt");
+        std::fs::write(&path, b"plain text").expect("write temp text");
+
+        let result = load_external_image_from_path(&path, &"Image".into());
+        std::fs::remove_file(&path).expect("remove temp text");
+
+        assert!(matches!(result, Ok(None)));
+    }
+
+    #[test]
+    fn test_load_external_image_rejects_oversized_image_extension() {
+        let path = temp_path("png");
+        let file = std::fs::File::create(&path).expect("create temp image");
+        file.set_len(MAX_EXTERNAL_ATTACHMENT_BYTES + 1)
+            .expect("resize temp image");
+
+        let result = load_external_image_from_path(&path, &"Image".into());
+        std::fs::remove_file(&path).expect("remove temp image");
+
+        assert!(result.is_err());
+    }
+
+    fn temp_path(extension: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "mast-agent-ui-test-{}.{}",
+            uuid::Uuid::new_v4(),
+            extension
+        ))
     }
 }
 
@@ -882,7 +925,7 @@ fn image_format_from_external_content(format: image::ImageFormat) -> Option<Imag
 
 // Case-insensitive so that e.g. `foo.PNG` is recognized the same as `foo.png`.
 // SVG is excluded because it is handled separately.
-fn is_raster_image_path(path: &Path) -> bool {
+pub(crate) fn is_raster_image_path(path: &Path) -> bool {
     let Some(extension) = path.extension().and_then(OsStr::to_str) else {
         return false;
     };
@@ -905,18 +948,41 @@ pub(crate) fn is_pdf_path(path: &Path) -> bool {
 pub(crate) fn load_external_image_from_path(
     path: &Path,
     default_name: &SharedString,
-) -> Option<(Image, SharedString)> {
-    let content = std::fs::read(path).ok()?;
-    let format = image::guess_format(&content)
+) -> Result<Option<(Image, SharedString)>> {
+    let has_raster_extension = is_raster_image_path(path);
+    if path.extension().is_some() && !has_raster_extension {
+        return Ok(None);
+    }
+
+    let size = path.metadata()?.len();
+    if size > MAX_EXTERNAL_ATTACHMENT_BYTES {
+        if has_raster_extension {
+            return Err(anyhow!(
+                "{} is too large to attach. The limit is {} MB.",
+                path.display(),
+                MAX_EXTERNAL_ATTACHMENT_BYTES / 1024 / 1024
+            ));
+        }
+        return Ok(None);
+    }
+
+    let content = std::fs::read(path)?;
+    let Some(format) = image::guess_format(&content)
         .ok()
-        .and_then(image_format_from_external_content)?;
+        .and_then(image_format_from_external_content)
+    else {
+        if has_raster_extension {
+            return Err(anyhow!("{} is not a supported image file.", path.display()));
+        }
+        return Ok(None);
+    };
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
         .map(|name| SharedString::from(name.to_owned()))
         .unwrap_or_else(|| default_name.clone());
 
-    Some((Image::from_bytes(format, content), name))
+    Ok(Some((Image::from_bytes(format, content), name)))
 }
 
 pub(crate) fn load_external_pdf_from_path(path: &Path) -> Result<Option<ExternalBlob>> {
@@ -1044,16 +1110,25 @@ pub(crate) fn paste_images_as_context(
             .partition_map::<Vec<_>, Vec<_>, _, _, _>(std::convert::identity);
 
         if !paths.is_empty() {
-            images.extend(
-                cx.background_spawn(async move {
-                    paths
-                        .into_iter()
-                        .flat_map(|paths| paths.paths().to_owned())
-                        .filter_map(|path| load_external_image_from_path(&path, &default_name))
-                        .collect::<Vec<_>>()
+            let (loaded_images, errors) = cx
+                .background_spawn(async move {
+                    let mut images = Vec::new();
+                    let mut errors = Vec::new();
+                    for path in paths.into_iter().flat_map(|paths| paths.paths().to_owned()) {
+                        match load_external_image_from_path(&path, &default_name) {
+                            Ok(Some(image)) => images.push(image),
+                            Ok(None) => {}
+                            Err(error) => errors.push(error),
+                        }
+                    }
+                    (images, errors)
                 })
-                .await,
-            );
+                .await;
+
+            for error in errors {
+                Err::<(), _>(error).notify_workspace_async_err(workspace.clone(), &mut cx);
+            }
+            images.extend(loaded_images);
         }
 
         if !images.is_empty() {

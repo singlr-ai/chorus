@@ -273,8 +273,8 @@ async fn resolve_external_context_items(
     let default_image_name: SharedString = "Image".into();
 
     for path in paths {
-        if supports_images
-            && let Some((image, name)) = cx
+        if supports_images {
+            match cx
                 .background_spawn({
                     let path = path.clone();
                     let default_image_name = default_image_name.clone();
@@ -286,9 +286,17 @@ async fn resolve_external_context_items(
                     }
                 })
                 .await
-        {
-            items.push(ResolvedPastedContextItem::Image(image, name));
-            continue;
+            {
+                Ok(Some((image, name))) => {
+                    items.push(ResolvedPastedContextItem::Image(image, name));
+                    continue;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    errors.push(error);
+                    continue;
+                }
+            }
         }
 
         if crate::mention_set::is_pdf_path(&path) {
@@ -1640,19 +1648,27 @@ impl MessageEditor {
                 };
 
                 let default_image_name: SharedString = "Image".into();
-                let images = cx
+                let (images, errors) = cx
                     .background_spawn(async move {
-                        paths
-                            .into_iter()
-                            .filter_map(|path| {
-                                crate::mention_set::load_external_image_from_path(
-                                    &path,
-                                    &default_image_name,
-                                )
-                            })
-                            .collect::<Vec<_>>()
+                        let mut images = Vec::new();
+                        let mut errors = Vec::new();
+                        for path in paths {
+                            match crate::mention_set::load_external_image_from_path(
+                                &path,
+                                &default_image_name,
+                            ) {
+                                Ok(Some(image)) => images.push(image),
+                                Ok(None) => {}
+                                Err(error) => errors.push(error),
+                            }
+                        }
+                        (images, errors)
                     })
                     .await;
+
+                for error in errors {
+                    Err::<(), _>(error).notify_workspace_async_err(workspace.clone(), cx);
+                }
 
                 crate::mention_set::insert_images_as_context(
                     images,
