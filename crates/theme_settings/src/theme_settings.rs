@@ -8,6 +8,7 @@
 mod schema;
 mod settings;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use ::settings::{IntoGpui, Settings, SettingsStore};
@@ -74,6 +75,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     if load_user_themes {
         let registry = ThemeRegistry::global(cx);
         load_bundled_themes(&registry);
+        load_bundled_icon_themes(&registry);
     }
 
     let theme = configured_theme(cx);
@@ -218,6 +220,33 @@ pub fn load_bundled_themes(registry: &ThemeRegistry) {
 
         let refined = refine_theme_family(theme_family);
         registry.insert_theme_families([refined]);
+    }
+}
+
+fn load_bundled_icon_themes(registry: &ThemeRegistry) {
+    let icon_theme_paths = registry
+        .assets()
+        .list("icon_themes/")
+        .expect("failed to list icon theme assets")
+        .into_iter()
+        .filter(|path| path.ends_with(".json"));
+
+    for path in icon_theme_paths {
+        let Some(icon_theme) = registry.assets().load(&path).log_err().flatten() else {
+            continue;
+        };
+
+        let Some(icon_theme_family) = theme::deserialize_icon_theme(&icon_theme)
+            .with_context(|| format!("failed to parse icon theme at path \"{path}\""))
+            .log_err()
+        else {
+            continue;
+        };
+
+        let icons_root_path = Path::new(path.as_ref()).parent().unwrap_or(Path::new(""));
+        registry
+            .load_icon_theme(icon_theme_family, icons_root_path)
+            .log_err();
     }
 }
 
@@ -422,4 +451,50 @@ pub fn increase_buffer_font_size(cx: &mut App) {
 /// This will be effective until the app is restarted.
 pub fn decrease_buffer_font_size(cx: &mut App) {
     adjust_buffer_font_size(cx, |size| size - px(1.0));
+}
+
+#[cfg(test)]
+mod tests {
+    use assets::Assets;
+    use theme::{Appearance, ThemeRegistry};
+
+    use super::*;
+
+    #[test]
+    fn loads_bundled_jetbrains_themes() -> anyhow::Result<()> {
+        let registry = ThemeRegistry::new(Box::new(Assets));
+
+        load_bundled_themes(&registry);
+
+        let dark = registry.get("JetBrains Dark")?;
+        let light = registry.get("JetBrains Light")?;
+
+        assert_eq!(dark.appearance, Appearance::Dark);
+        assert_eq!(light.appearance, Appearance::Light);
+
+        Ok(())
+    }
+
+    #[test]
+    fn loads_bundled_jetbrains_icon_themes() -> anyhow::Result<()> {
+        let registry = ThemeRegistry::new(Box::new(Assets));
+
+        load_bundled_icon_themes(&registry);
+
+        let dark = registry.get_icon_theme("JetBrains New UI Icons (Dark)")?;
+        let light = registry.get_icon_theme("JetBrains New UI Icons (Light)")?;
+
+        assert_eq!(dark.appearance, Appearance::Dark);
+        assert_eq!(light.appearance, Appearance::Light);
+        assert_eq!(
+            dark.directory_icons.collapsed.as_deref(),
+            Some("icon_themes/jetbrains-new-ui/./icons/folder_dark.svg")
+        );
+        assert_eq!(
+            light.directory_icons.collapsed.as_deref(),
+            Some("icon_themes/jetbrains-new-ui/./icons/folder.svg")
+        );
+
+        Ok(())
+    }
 }

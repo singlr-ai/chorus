@@ -11,10 +11,14 @@
   // - "dark": Use the theme indicated by the "dark" field
   "theme": {
     "mode": "system",
-    "light": "One Light",
-    "dark": "One Dark",
+    "light": "JetBrains Light",
+    "dark": "JetBrains Dark",
   },
-  "icon_theme": "Zed (Default)",
+  "icon_theme": {
+    "mode": "system",
+    "light": "JetBrains New UI Icons (Light)",
+    "dark": "JetBrains New UI Icons (Dark)",
+  },
   // The name of a base set of key bindings to use.
   // This setting can take six values, each named after another
   // text editor:

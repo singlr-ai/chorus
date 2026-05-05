@@ -145,12 +145,9 @@ impl Icon {
         }
     }
 
-    /// Create an icon from a path. Uses a heuristic to determine if it's embedded or external:
-    /// - Paths starting with "icons/" are treated as embedded SVGs
-    /// - Other paths are treated as external raster images (from icon themes)
     pub fn from_path(path: impl Into<SharedString>) -> Self {
         let path = path.into();
-        let source = if path.starts_with("icons/") {
+        let source = if path.starts_with("icons/") || path.starts_with("icon_themes/") {
             IconSource::Embedded(path)
         } else {
             IconSource::External(Arc::from(PathBuf::from(path.as_ref())))
