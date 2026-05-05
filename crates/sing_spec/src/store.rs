@@ -614,7 +614,7 @@ mod tests {
     fn update_metadata_refreshes_board_and_preserves_unknown_fields() {
         let store = fixture_store(
             r#"
-owner: chorus
+owner: mast
 specs:
   - id: alpha
     title: Alpha

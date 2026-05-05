@@ -7,17 +7,17 @@
     <name>$APP_NAME</name>
     <summary>The integrated agent environment</summary>
     <developer id="ai.singlr">
-        <name translate="no">Singlr AI</name>
+        <name translate="no">Standard Applied Intelligence Labs</name>
     </developer>
     <description>
         <p>
-            Chorus brings sing-aware project orchestration into a native code editor without giving up fast startup, SSH workflows, or GPU-rendered UI.
+            Mast by SAIL is built on Zed and brings SAIL-aware project orchestration into a native code editor without giving up fast startup, SSH workflows, or GPU-rendered UI.
         </p>
         <p>Features:</p>
         <ul>
             <li>Performance: Efficiently uses every CPU core and your GPU for instant startup, quick file loading, and responsive keystrokes.</li>
             <li>Language-aware: Maintains a syntax tree for precise highlighting, and auto-indent, with LSP support for autocompletion and refactoring.</li>
-            <li>Infrastructure-aware: Chorus is built to layer sing project context, specs, and orchestration on top of native editing workflows.</li>
+            <li>Infrastructure-aware: Mast is built to layer SAIL project context, specs, and orchestration on top of native editing workflows.</li>
             <li>Local-first: SSH remote development, external agents, and local editing stay available without defaulting users into hosted account flows.</li>
         </ul>
     </description>

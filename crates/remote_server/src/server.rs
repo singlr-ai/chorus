@@ -472,7 +472,7 @@ pub fn execute_run(
             crashes::InitCrashHandler {
                 session_id: id,
                 zed_version: VERSION.to_owned(),
-                binary: "chorus-remote-server".to_string(),
+                binary: "mast-remote-server".to_string(),
                 release_channel: release_channel::RELEASE_CHANNEL_NAME.clone(),
                 commit_sha: option_env!("ZED_COMMIT_SHA").unwrap_or("no_sha").to_owned(),
             },
@@ -482,7 +482,7 @@ pub fn execute_run(
                     background_executor.spawn(task).detach();
                 }
             },
-            |pid| paths::temp_dir().join(format!("chorus-remote-server-crash-handler-{pid}")),
+            |pid| paths::temp_dir().join(format!("mast-remote-server-crash-handler-{pid}")),
             #[allow(clippy::disallowed_methods)]
             |duration| FutureExt::map(Timer::after(duration), |_| ()),
         )))
@@ -750,14 +750,14 @@ pub(crate) fn execute_proxy(
             crashes::InitCrashHandler {
                 session_id: id,
                 zed_version: VERSION.to_owned(),
-                binary: "chorus-remote-proxy".to_string(),
+                binary: "mast-remote-proxy".to_string(),
                 release_channel: release_channel::RELEASE_CHANNEL_NAME.clone(),
                 commit_sha: option_env!("ZED_COMMIT_SHA").unwrap_or("no_sha").to_owned(),
             },
             |task| {
                 smol::spawn(task).detach();
             },
-            |pid| paths::temp_dir().join(format!("chorus-remote-server-proxy-crash-handler-{pid}")),
+            |pid| paths::temp_dir().join(format!("mast-remote-server-proxy-crash-handler-{pid}")),
             // we are running outside gpui
             #[allow(clippy::disallowed_methods)]
             |duration| FutureExt::map(Timer::after(duration), |_| ()),
@@ -1214,7 +1214,7 @@ fn cleanup_old_binaries() -> Result<()> {
     let server_dir = paths::remote_server_dir_relative();
     let release_channel = release_channel::RELEASE_CHANNEL.dev_name();
     let prefixes = [
-        format!("chorus-remote-server-{}-", release_channel),
+        format!("mast-remote-server-{}-", release_channel),
         format!("zed-remote-server-{}-", release_channel),
     ];
 

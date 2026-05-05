@@ -50,7 +50,7 @@ impl SshSingCommandRunner {
     pub fn new(host: SshConnectionOptions) -> Self {
         Self {
             host,
-            remote_program: "sing".to_string(),
+            remote_program: "sail".to_string(),
             subprocess: SubprocessRunner,
         }
     }
@@ -109,7 +109,7 @@ impl SingCommandRunner for SshSingCommandRunner {
     async fn run(&self, request: CommandRequest) -> Result<CommandOutput, SingCommandError> {
         let args = self.build_ssh_args(&request)?;
         log::debug!(
-            "running sing command {} via {}",
+            "running SAIL command {} via {}",
             request.display_name,
             self.host.connection_string()
         );
@@ -182,7 +182,7 @@ impl SubprocessRunner {
                 })?
             }
             _ = timer => {
-                log::warn!("sing command {} timed out after {:?}", display_name, timeout);
+                log::warn!("SAIL command {} timed out after {:?}", display_name, timeout);
                 return Err(ProcessError::Timeout { timeout });
             }
         };
@@ -260,7 +260,7 @@ fn classify_remote_failure_kind(stdout: &str, stderr: &str) -> RemoteFailureKind
         return RemoteFailureKind::PermissionDenied;
     }
 
-    if combined.contains("is stopped. start it with: sing up") {
+    if combined.contains("is stopped. start it with: sail up") {
         return RemoteFailureKind::ProjectStopped;
     }
 
@@ -321,11 +321,11 @@ mod tests {
             "Fix \"quoted\" title".to_string(),
         ];
 
-        let command = build_remote_command("sing", "spec create", &args).unwrap();
+        let command = build_remote_command("sail", "spec create", &args).unwrap();
 
         assert_eq!(
             command,
-            "exec sing spec create demo --title 'Fix \"quoted\" title'"
+            "exec sail spec create demo --title 'Fix \"quoted\" title'"
         );
     }
 
@@ -334,14 +334,14 @@ mod tests {
         assert_eq!(
             classify_remote_failure_kind(
                 "",
-                "Project 'demo' is stopped. Start it with: sing up demo"
+                "Project 'demo' is stopped. Start it with: sail up demo"
             ),
             RemoteFailureKind::ProjectStopped
         );
         assert_eq!(
             classify_remote_failure_kind(
                 "",
-                "Root privileges required. Run with: sudo sing host status"
+                "Root privileges required. Run with: sudo sail host status"
             ),
             RemoteFailureKind::PermissionDenied
         );

@@ -27,7 +27,7 @@ impl OpenUrlModal {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("chorus://...", window, cx);
+            editor.set_placeholder_text("mast://...", window, cx);
             editor
         });
 
@@ -53,8 +53,8 @@ impl OpenUrlModal {
             return;
         }
 
-        if url.starts_with("chorus://")
-            || url.starts_with("chorus-cli://")
+        if url.starts_with("mast://")
+            || url.starts_with("mast-cli://")
             || url.starts_with("zed://")
             || url.starts_with("zed-cli://")
         {

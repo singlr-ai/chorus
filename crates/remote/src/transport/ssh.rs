@@ -890,7 +890,7 @@ impl SshRemoteConnection {
             ReleaseChannel::Nightly => Ok(None),
             ReleaseChannel::Dev => {
                 anyhow::bail!(
-                    "CHORUS_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
+                    "MAST_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
                     dst_path
                 )
             }

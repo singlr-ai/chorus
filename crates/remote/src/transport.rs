@@ -195,7 +195,7 @@ pub(crate) fn remote_server_binary_name(
         _ => version.to_string(),
     };
     format!(
-        "chorus-remote-server-{}-{version_str}",
+        "mast-remote-server-{}-{version_str}",
         release_channel.dev_name()
     )
 }
@@ -215,20 +215,20 @@ pub(crate) fn legacy_remote_server_binary_name(
 }
 
 pub(crate) fn copy_remote_server_override() -> Option<PathBuf> {
-    std::env::var("CHORUS_COPY_REMOTE_SERVER")
+    std::env::var("MAST_COPY_REMOTE_SERVER")
         .or_else(|_| std::env::var("ZED_COPY_REMOTE_SERVER"))
         .ok()
         .map(PathBuf::from)
 }
 
 pub(crate) fn build_remote_server_mode() -> String {
-    std::env::var("CHORUS_BUILD_REMOTE_SERVER")
+    std::env::var("MAST_BUILD_REMOTE_SERVER")
         .or_else(|_| std::env::var("ZED_BUILD_REMOTE_SERVER"))
         .unwrap_or_else(|_| "nocompress".into())
 }
 
 fn zstd_musl_lib_dir() -> Option<String> {
-    std::env::var("CHORUS_ZSTD_MUSL_LIB")
+    std::env::var("MAST_ZSTD_MUSL_LIB")
         .or_else(|_| std::env::var("ZED_ZSTD_MUSL_LIB"))
         .ok()
 }
@@ -249,7 +249,7 @@ fn bundled_remote_server_archive_name(platform: RemotePlatform) -> String {
         "gz"
     };
     format!(
-        "chorus-remote-server-{}-{}.{}",
+        "mast-remote-server-{}-{}.{}",
         platform.os.as_str(),
         platform.arch.as_str(),
         extension
@@ -297,7 +297,7 @@ async fn build_remote_server_from_source(
             return Ok(Some(path));
         } else {
             log::warn!(
-                "CHORUS_COPY_REMOTE_SERVER path does not exist, falling back to CHORUS_BUILD_REMOTE_SERVER: {}",
+                "MAST_COPY_REMOTE_SERVER path does not exist, falling back to MAST_BUILD_REMOTE_SERVER: {}",
                 path.display()
             );
         }
@@ -314,7 +314,7 @@ async fn build_remote_server_from_source(
             return Ok(None);
         }
         log::warn!(
-            "CHORUS_BUILD_REMOTE_SERVER is disabled, but no server binary exists on the server"
+            "MAST_BUILD_REMOTE_SERVER is disabled, but no server binary exists on the server"
         )
     }
 
@@ -571,11 +571,11 @@ mod tests {
 
         assert_eq!(
             remote_server_binary_name(ReleaseChannel::Dev, &version),
-            "chorus-remote-server-dev-build"
+            "mast-remote-server-dev-build"
         );
         assert_eq!(
             remote_server_binary_name(ReleaseChannel::Stable, &version),
-            "chorus-remote-server-stable-0.233.0"
+            "mast-remote-server-stable-0.233.0"
         );
         assert_eq!(
             legacy_remote_server_binary_name(ReleaseChannel::Dev, &version),
@@ -590,21 +590,21 @@ mod tests {
                 os: RemoteOs::Linux,
                 arch: RemoteArch::X86_64,
             }),
-            "chorus-remote-server-linux-x86_64.gz"
+            "mast-remote-server-linux-x86_64.gz"
         );
         assert_eq!(
             bundled_remote_server_archive_name(RemotePlatform {
                 os: RemoteOs::Windows,
                 arch: RemoteArch::Aarch64,
             }),
-            "chorus-remote-server-windows-aarch64.zip"
+            "mast-remote-server-windows-aarch64.zip"
         );
     }
 
     #[test]
     fn test_packaged_remote_server_locations_include_bundle_path() {
-        let current_dir = Path::new("/tmp/chorus");
-        let archive_name = "chorus-remote-server-linux-x86_64.gz";
+        let current_dir = Path::new("/tmp/mast");
+        let archive_name = "mast-remote-server-linux-x86_64.gz";
         let locations = packaged_remote_server_locations(current_dir, archive_name);
 
         #[cfg(target_os = "macos")]
@@ -612,7 +612,7 @@ mod tests {
             assert_eq!(
                 locations[0],
                 PathBuf::from(
-                    "/tmp/chorus/../Resources/remote-servers/chorus-remote-server-linux-x86_64.gz"
+                    "/tmp/mast/../Resources/remote-servers/mast-remote-server-linux-x86_64.gz"
                 )
             );
         }
@@ -622,7 +622,7 @@ mod tests {
             assert_eq!(
                 locations[0],
                 PathBuf::from(
-                    "/tmp/chorus/../libexec/remote-servers/chorus-remote-server-linux-x86_64.gz"
+                    "/tmp/mast/../libexec/remote-servers/mast-remote-server-linux-x86_64.gz"
                 )
             );
         }
@@ -631,13 +631,13 @@ mod tests {
         {
             assert_eq!(
                 locations[0],
-                PathBuf::from("/tmp/chorus/remote-servers/chorus-remote-server-linux-x86_64.gz")
+                PathBuf::from("/tmp/mast/remote-servers/mast-remote-server-linux-x86_64.gz")
             );
         }
 
         assert_eq!(
             locations.last().unwrap(),
-            &PathBuf::from(format!("/tmp/chorus/{archive_name}"))
+            &PathBuf::from(format!("/tmp/mast/{archive_name}"))
         );
     }
 }

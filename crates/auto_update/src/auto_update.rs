@@ -521,7 +521,7 @@ impl AutoUpdater {
             &this,
             release_channel,
             version,
-            "chorus-remote-server",
+            "mast-remote-server",
             os,
             arch,
             cx,
@@ -538,7 +538,7 @@ impl AutoUpdater {
 
         if smol::fs::metadata(&version_path).await.is_err() {
             log::info!(
-                "downloading chorus-remote-server {os} {arch} version {}",
+                "downloading mast-remote-server {os} {arch} version {}",
                 release.version
             );
             set_status("Downloading remote server", cx);
@@ -572,16 +572,9 @@ impl AutoUpdater {
                 .context("auto-update not initialized")
         })?;
 
-        let release = Self::get_release_asset(
-            &this,
-            channel,
-            version,
-            "chorus-remote-server",
-            os,
-            arch,
-            cx,
-        )
-        .await?;
+        let release =
+            Self::get_release_asset(&this, channel, version, "mast-remote-server", os, arch, cx)
+                .await?;
 
         Ok(Some(release.url))
     }

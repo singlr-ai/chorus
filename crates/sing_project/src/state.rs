@@ -648,7 +648,7 @@ mod tests {
     #[test]
     fn project_row_humanizes_backend_reason_codes() {
         let row = ProjectRow {
-            name: "sing".to_string(),
+            name: "sail".to_string(),
             status: ProjectStatus::Stopped,
             ip: None,
             description: None,

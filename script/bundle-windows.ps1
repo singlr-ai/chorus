@@ -101,9 +101,9 @@ function GenerateLicenses {
 
 function BuildZedAndItsFriends {
     Write-Output "Building Zed and its friends, for channel: $channel"
-    # Build chorus.exe, cli.exe and auto_update_helper.exe
+    # Build mast.exe, cli.exe and auto_update_helper.exe
     cargo build --release --package zed --package cli --package auto_update_helper --target $target
-    Copy-Item -Path ".\$CargoOutDir\chorus.exe" -Destination "$innoDir\Chorus.exe" -Force
+    Copy-Item -Path ".\$CargoOutDir\mast.exe" -Destination "$innoDir\Mast.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\cli.exe" -Destination "$innoDir\cli.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\auto_update_helper.exe" -Destination "$innoDir\auto_update_helper.exe" -Force
     # Build explorer_command_injector.dll
@@ -204,7 +204,7 @@ function SignZedAndItsFriends {
         return
     }
 
-    $files = "$innoDir\Chorus.exe,$innoDir\cli.exe,$innoDir\auto_update_helper.exe,$innoDir\zed_explorer_command_injector.dll,$innoDir\zed_explorer_command_injector.appx"
+    $files = "$innoDir\Mast.exe,$innoDir\cli.exe,$innoDir\auto_update_helper.exe,$innoDir\zed_explorer_command_injector.dll,$innoDir\zed_explorer_command_injector.appx"
     & "$innoDir\sign.ps1" $files
 }
 
@@ -228,8 +228,8 @@ function DownloadConpty {
 function CollectFiles {
     Move-Item -Path "$innoDir\zed_explorer_command_injector.appx" -Destination "$innoDir\appx\zed_explorer_command_injector.appx" -Force
     Move-Item -Path "$innoDir\zed_explorer_command_injector.dll" -Destination "$innoDir\appx\zed_explorer_command_injector.dll" -Force
-    Move-Item -Path "$innoDir\cli.exe" -Destination "$innoDir\bin\chorus.exe" -Force
-    Move-Item -Path "$innoDir\zed.sh" -Destination "$innoDir\bin\chorus" -Force
+    Move-Item -Path "$innoDir\cli.exe" -Destination "$innoDir\bin\mast.exe" -Force
+    Move-Item -Path "$innoDir\zed.sh" -Destination "$innoDir\bin\mast" -Force
     Move-Item -Path "$innoDir\auto_update_helper.exe" -Destination "$innoDir\tools\auto_update_helper.exe" -Force
     if($Architecture -eq "aarch64") {
         New-Item -Type Directory -Path "$innoDir\arm64" -Force
@@ -252,58 +252,58 @@ function BuildInstaller {
         "stable" {
             $appId = "{{2DB0DA96-CA55-49BB-AF4F-64AF36A86712}"
             $appIconName = "app-icon"
-            $appName = "Chorus"
-            $appDisplayName = "Chorus"
-            $appSetupName = "Chorus-$Architecture"
+            $appName = "Mast"
+            $appDisplayName = "Mast"
+            $appSetupName = "Mast-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Chorus-Stable-Instance-Mutex"
-            $appExeName = "Chorus"
-            $regValueName = "Chorus"
-            $appUserId = "SinglrAI.Chorus"
+            $appMutex = "Mast-Stable-Instance-Mutex"
+            $appExeName = "Mast"
+            $regValueName = "Mast"
+            $appUserId = "SinglrAI.Mast"
             $appShellNameShort = "C&horus"
-            $appAppxFullName = "SinglrAI.Chorus_1.0.0.0_neutral__japxn1gcva8rg"
+            $appAppxFullName = "SinglrAI.Mast_1.0.0.0_neutral__japxn1gcva8rg"
         }
         "preview" {
             $appId = "{{F70E4811-D0E2-4D88-AC99-D63752799F95}"
             $appIconName = "app-icon-preview"
-            $appName = "Chorus Preview"
-            $appDisplayName = "Chorus Preview"
-            $appSetupName = "Chorus-$Architecture"
+            $appName = "Mast Preview"
+            $appDisplayName = "Mast Preview"
+            $appSetupName = "Mast-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Chorus-Preview-Instance-Mutex"
-            $appExeName = "Chorus"
-            $regValueName = "ChorusPreview"
-            $appUserId = "SinglrAI.Chorus.Preview"
+            $appMutex = "Mast-Preview-Instance-Mutex"
+            $appExeName = "Mast"
+            $regValueName = "MastPreview"
+            $appUserId = "SinglrAI.Mast.Preview"
             $appShellNameShort = "C&horus Preview"
-            $appAppxFullName = "SinglrAI.Chorus.Preview_1.0.0.0_neutral__japxn1gcva8rg"
+            $appAppxFullName = "SinglrAI.Mast.Preview_1.0.0.0_neutral__japxn1gcva8rg"
         }
         "nightly" {
             $appId = "{{1BDB21D3-14E7-433C-843C-9C97382B2FE0}"
             $appIconName = "app-icon-nightly"
-            $appName = "Chorus Nightly"
-            $appDisplayName = "Chorus Nightly"
-            $appSetupName = "Chorus-$Architecture"
+            $appName = "Mast Nightly"
+            $appDisplayName = "Mast Nightly"
+            $appSetupName = "Mast-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Chorus-Nightly-Instance-Mutex"
-            $appExeName = "Chorus"
-            $regValueName = "ChorusNightly"
-            $appUserId = "SinglrAI.Chorus.Nightly"
+            $appMutex = "Mast-Nightly-Instance-Mutex"
+            $appExeName = "Mast"
+            $regValueName = "MastNightly"
+            $appUserId = "SinglrAI.Mast.Nightly"
             $appShellNameShort = "C&horus Nightly"
-            $appAppxFullName = "SinglrAI.Chorus.Nightly_1.0.0.0_neutral__japxn1gcva8rg"
+            $appAppxFullName = "SinglrAI.Mast.Nightly_1.0.0.0_neutral__japxn1gcva8rg"
         }
         "dev" {
             $appId = "{{8357632E-24A4-4F32-BA97-E575B4D1FE5D}"
             $appIconName = "app-icon-dev"
-            $appName = "Chorus"
-            $appDisplayName = "Chorus"
-            $appSetupName = "Chorus-$Architecture"
+            $appName = "Mast"
+            $appDisplayName = "Mast"
+            $appSetupName = "Mast-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
-            $appMutex = "Chorus-Dev-Instance-Mutex"
-            $appExeName = "Chorus"
-            $regValueName = "ChorusDev"
-            $appUserId = "SinglrAI.Chorus.Dev"
+            $appMutex = "Mast-Dev-Instance-Mutex"
+            $appExeName = "Mast"
+            $regValueName = "MastDev"
+            $appUserId = "SinglrAI.Mast.Dev"
             $appShellNameShort = "C&horus Dev"
-            $appAppxFullName = "SinglrAI.Chorus.Dev_1.0.0.0_neutral__japxn1gcva8rg"
+            $appAppxFullName = "SinglrAI.Mast.Dev_1.0.0.0_neutral__japxn1gcva8rg"
         }
         default {
             Write-Error "can't bundle installer for $channel."

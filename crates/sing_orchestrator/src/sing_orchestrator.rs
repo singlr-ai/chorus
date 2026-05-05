@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use sing_bridge::{DispatchRequest, SingBridge};
 
 pub static SING_ORCHESTRATOR_AGENT_ID: LazyLock<AgentId> =
-    LazyLock::new(|| AgentId::new("Sing Orchestrator"));
+    LazyLock::new(|| AgentId::new("SAIL Orchestrator"));
 
 #[derive(Clone)]
 pub struct SingOrchestratorServer {
@@ -31,7 +31,7 @@ impl SingOrchestratorServer {
                 fs,
                 thread_store,
                 SING_ORCHESTRATOR_AGENT_ID.clone(),
-                "sing-orchestrator".into(),
+                "sail-orchestrator".into(),
                 ui::IconName::Sparkle,
                 Some(Arc::new(SingToolProvider)),
             ),
@@ -103,7 +103,7 @@ impl SingToolOutput {
         match serde_json::to_value(value) {
             Ok(result) => Self::Success { result },
             Err(error) => Self::Error {
-                error: format!("failed to serialize sing tool result: {error}"),
+                error: format!("failed to serialize SAIL tool result: {error}"),
             },
         }
     }
@@ -119,14 +119,14 @@ impl From<SingToolOutput> for LanguageModelToolResultContent {
     fn from(value: SingToolOutput) -> Self {
         match value {
             SingToolOutput::Success { result } => serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|error| format!("failed to render sing tool result: {error}"))
+                .unwrap_or_else(|error| format!("failed to render SAIL tool result: {error}"))
                 .into(),
             SingToolOutput::Error { error } => error.into(),
         }
     }
 }
 
-/// Lists sing projects configured on the engineer's sing host.
+/// Lists SAIL projects configured on the engineer's SAIL host.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct SingListProjectsInput {}
 
@@ -136,7 +136,7 @@ impl AgentTool for SingListProjectsTool {
     type Input = SingListProjectsInput;
     type Output = SingToolOutput;
 
-    const NAME: &'static str = "sing_list_projects";
+    const NAME: &'static str = "sail_list_projects";
 
     fn kind() -> acp::ToolKind {
         acp::ToolKind::Read
@@ -147,7 +147,7 @@ impl AgentTool for SingListProjectsTool {
         _input: Result<Self::Input, serde_json::Value>,
         _cx: &mut App,
     ) -> SharedString {
-        "List sing projects".into()
+        "List SAIL projects".into()
     }
 
     fn run(
@@ -171,10 +171,10 @@ impl AgentTool for SingListProjectsTool {
     }
 }
 
-/// Lists the spec board for a sing project.
+/// Lists the spec board for a SAIL project.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct SingProjectInput {
-    /// The sing project name.
+    /// The SAIL project name.
     project: String,
 }
 
@@ -184,7 +184,7 @@ impl AgentTool for SingListSpecsTool {
     type Input = SingProjectInput;
     type Output = SingToolOutput;
 
-    const NAME: &'static str = "sing_list_specs";
+    const NAME: &'static str = "sail_list_specs";
 
     fn kind() -> acp::ToolKind {
         acp::ToolKind::Read
@@ -197,7 +197,7 @@ impl AgentTool for SingListSpecsTool {
     ) -> SharedString {
         match input {
             Ok(input) => format!("List specs for {}", input.project).into(),
-            Err(_) => "List sing specs".into(),
+            Err(_) => "List SAIL specs".into(),
         }
     }
 
@@ -222,10 +222,10 @@ impl AgentTool for SingListSpecsTool {
     }
 }
 
-/// Shows the full markdown content and metadata for one sing spec.
+/// Shows the full markdown content and metadata for one SAIL spec.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct SingShowSpecInput {
-    /// The sing project name.
+    /// The SAIL project name.
     project: String,
     /// The spec id to read.
     spec_id: String,
@@ -237,7 +237,7 @@ impl AgentTool for SingShowSpecTool {
     type Input = SingShowSpecInput;
     type Output = SingToolOutput;
 
-    const NAME: &'static str = "sing_show_spec";
+    const NAME: &'static str = "sail_show_spec";
 
     fn kind() -> acp::ToolKind {
         acp::ToolKind::Read
@@ -250,7 +250,7 @@ impl AgentTool for SingShowSpecTool {
     ) -> SharedString {
         match input {
             Ok(input) => format!("Show spec {}", input.spec_id).into(),
-            Err(_) => "Show sing spec".into(),
+            Err(_) => "Show SAIL spec".into(),
         }
     }
 
@@ -275,10 +275,10 @@ impl AgentTool for SingShowSpecTool {
     }
 }
 
-/// Reads current agent session status for a sing project.
+/// Reads current agent session status for a SAIL project.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct SingAgentStatusInput {
-    /// The sing project name.
+    /// The SAIL project name.
     project: String,
 }
 
@@ -288,7 +288,7 @@ impl AgentTool for SingAgentStatusTool {
     type Input = SingAgentStatusInput;
     type Output = SingToolOutput;
 
-    const NAME: &'static str = "sing_agent_status";
+    const NAME: &'static str = "sail_agent_status";
 
     fn kind() -> acp::ToolKind {
         acp::ToolKind::Read
@@ -301,7 +301,7 @@ impl AgentTool for SingAgentStatusTool {
     ) -> SharedString {
         match input {
             Ok(input) => format!("Check agent status for {}", input.project).into(),
-            Err(_) => "Check sing agent status".into(),
+            Err(_) => "Check SAIL agent status".into(),
         }
     }
 
@@ -326,10 +326,10 @@ impl AgentTool for SingAgentStatusTool {
     }
 }
 
-/// Dispatches the next ready spec, or a specific spec, to a sing-managed agent session.
+/// Dispatches the next ready spec, or a specific spec, to a SAIL-managed agent session.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct SingDispatchSpecInput {
-    /// The sing project name.
+    /// The SAIL project name.
     project: String,
     /// Optional specific spec id. Omit this to dispatch the next ready spec.
     spec_id: Option<String>,
@@ -344,7 +344,7 @@ impl AgentTool for SingDispatchSpecTool {
     type Input = SingDispatchSpecInput;
     type Output = SingToolOutput;
 
-    const NAME: &'static str = "sing_dispatch_spec";
+    const NAME: &'static str = "sail_dispatch_spec";
 
     fn kind() -> acp::ToolKind {
         acp::ToolKind::Execute
@@ -358,7 +358,7 @@ impl AgentTool for SingDispatchSpecTool {
         match input {
             Ok(input) if input.dry_run => format!("Preview dispatch for {}", input.project).into(),
             Ok(input) => format!("Dispatch spec for {}", input.project).into(),
-            Err(_) => "Dispatch sing spec".into(),
+            Err(_) => "Dispatch SAIL spec".into(),
         }
     }
 
@@ -396,7 +396,7 @@ impl AgentTool for SingDispatchSpecTool {
             });
             futures::select! {
                 result = task.fuse() => result,
-                _ = event_stream.cancelled_by_user().fuse() => Err(SingToolOutput::error("sing dispatch cancelled by user")),
+                _ = event_stream.cancelled_by_user().fuse() => Err(SingToolOutput::error("SAIL dispatch cancelled by user")),
             }
         })
     }
@@ -408,7 +408,7 @@ mod tests {
 
     #[test]
     fn exposes_stable_agent_id() {
-        assert_eq!(SING_ORCHESTRATOR_AGENT_ID.as_ref(), "Sing Orchestrator");
+        assert_eq!(SING_ORCHESTRATOR_AGENT_ID.as_ref(), "SAIL Orchestrator");
     }
 
     #[test]

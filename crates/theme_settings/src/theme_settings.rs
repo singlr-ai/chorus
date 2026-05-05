@@ -461,13 +461,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loads_bundled_jetbrains_themes() -> anyhow::Result<()> {
+    fn loads_bundled_mast_themes() -> anyhow::Result<()> {
         let registry = ThemeRegistry::new(Box::new(Assets));
 
         load_bundled_themes(&registry);
 
-        let dark = registry.get("JetBrains Dark")?;
-        let light = registry.get("JetBrains Light")?;
+        let dark = registry.get("Mast Dark")?;
+        let light = registry.get("Mast Light")?;
 
         assert_eq!(dark.appearance, Appearance::Dark);
         assert_eq!(light.appearance, Appearance::Light);
@@ -476,23 +476,23 @@ mod tests {
     }
 
     #[test]
-    fn loads_bundled_jetbrains_icon_themes() -> anyhow::Result<()> {
+    fn loads_bundled_mast_icon_themes() -> anyhow::Result<()> {
         let registry = ThemeRegistry::new(Box::new(Assets));
 
         load_bundled_icon_themes(&registry);
 
-        let dark = registry.get_icon_theme("JetBrains New UI Icons (Dark)")?;
-        let light = registry.get_icon_theme("JetBrains New UI Icons (Light)")?;
+        let dark = registry.get_icon_theme("Mast Icons (Dark)")?;
+        let light = registry.get_icon_theme("Mast Icons (Light)")?;
 
         assert_eq!(dark.appearance, Appearance::Dark);
         assert_eq!(light.appearance, Appearance::Light);
         assert_eq!(
             dark.directory_icons.collapsed.as_deref(),
-            Some("icon_themes/jetbrains-new-ui/./icons/folder_dark.svg")
+            Some("icon_themes/mast/./icons/folder_dark.svg")
         );
         assert_eq!(
             light.directory_icons.collapsed.as_deref(),
-            Some("icon_themes/jetbrains-new-ui/./icons/folder.svg")
+            Some("icon_themes/mast/./icons/folder.svg")
         );
 
         Ok(())

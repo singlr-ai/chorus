@@ -24,7 +24,7 @@ use crate::{
 const HOST_API_PORT: u16 = 7070;
 const TUNNEL_TIMEOUT: Duration = Duration::from_secs(10);
 const API_START_TIMEOUT: Duration = Duration::from_secs(10);
-const API_TOKEN_PATH: &str = "~/.sing/api-token";
+const API_TOKEN_PATH: &str = "~/.sail/api-token";
 
 #[derive(Clone)]
 pub(crate) struct SingApiClient {
@@ -136,7 +136,7 @@ impl SingApiClient {
             return Err(api_failure(path, status, &text));
         }
         serde_json::from_str(&text).map_err(|source| SingBridgeError::InvalidResponse {
-            command: format!("sing api {path}"),
+            command: format!("sail api {path}"),
             output: text,
             source,
         })
@@ -170,9 +170,9 @@ impl SshApiTunnel {
             .stderr(Stdio::piped())
             .args(args);
         let child = command.spawn().map_err(|error| SingBridgeError::Command {
-            command: "ssh sing api tunnel".to_string(),
+            command: "ssh sail api tunnel".to_string(),
             source: SingCommandError::SpawnFailed {
-                command: "ssh sing api tunnel".to_string(),
+                command: "ssh sail api tunnel".to_string(),
                 message: error.to_string(),
             },
         })?;
@@ -190,7 +190,7 @@ impl SshApiTunnel {
             async_io::Timer::at(Instant::now() + Duration::from_millis(25)).await;
         }
         Err(SingBridgeError::ApiUnavailable {
-            message: "timed out creating SSH tunnel to sing API".to_string(),
+            message: "timed out creating SSH tunnel to SAIL API".to_string(),
         })
     }
 }
@@ -198,7 +198,7 @@ impl SshApiTunnel {
 impl Drop for SshApiTunnel {
     fn drop(&mut self) {
         if let Err(error) = self.child.kill() {
-            log::warn!("failed to stop sing API SSH tunnel: {error}");
+            log::warn!("failed to stop SAIL API SSH tunnel: {error}");
         }
     }
 }
@@ -227,9 +227,9 @@ impl From<DispatchRequest> for ApiDispatchRequest {
 
 async fn ensure_api_server(host: &SshConnectionOptions) -> Result<(), SingBridgeError> {
     let command = format!(
-        "mkdir -p ~/.sing && if ! bash -lc 'cat </dev/null >/dev/tcp/127.0.0.1/{HOST_API_PORT}' >/dev/null 2>&1; then nohup sing api --host 127.0.0.1 --port {HOST_API_PORT} > ~/.sing/api.log 2>&1 </dev/null & fi"
+        "mkdir -p ~/.sail && if ! bash -lc 'cat </dev/null >/dev/tcp/127.0.0.1/{HOST_API_PORT}' >/dev/null 2>&1; then nohup sail api --host 127.0.0.1 --port {HOST_API_PORT} > ~/.sail/api.log 2>&1 </dev/null & fi"
     );
-    run_host_shell(host, &command, "sing api start").await?;
+    run_host_shell(host, &command, "sail api start").await?;
     Ok(())
 }
 
@@ -239,7 +239,7 @@ async fn read_api_token(host: &SshConnectionOptions) -> Result<String, SingBridg
     let mut last_error = None;
 
     while started_at.elapsed() < API_START_TIMEOUT {
-        match run_host_shell(host, &command, "sing api token").await {
+        match run_host_shell(host, &command, "sail api token").await {
             Ok(output) => {
                 let token = output.trim().to_string();
                 if !token.is_empty() {
@@ -256,7 +256,7 @@ async fn read_api_token(host: &SshConnectionOptions) -> Result<String, SingBridg
 
     Err(SingBridgeError::ApiUnavailable {
         message: format!(
-            "sing API token was not available on host: {}",
+            "SAIL API token was not available on host: {}",
             last_error.unwrap_or_else(|| "timed out waiting for token".to_string())
         ),
     })
@@ -340,7 +340,7 @@ fn available_local_port() -> Result<u16, SingBridgeError> {
         .and_then(|listener| listener.local_addr())
         .map(|address| address.port())
         .map_err(|error| SingBridgeError::ApiUnavailable {
-            message: format!("failed to allocate a local port for sing API tunnel: {error}"),
+            message: format!("failed to allocate a local port for SAIL API tunnel: {error}"),
         })
 }
 
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn serializes_background_dispatch_request() -> Result<(), serde_json::Error> {
         let request = ApiDispatchRequest::from(DispatchRequest {
-            spec_id: Some("chorus-dispatch-integration".to_string()),
+            spec_id: Some("mast-dispatch-integration".to_string()),
             background: true,
             dry_run: true,
         });
@@ -374,7 +374,7 @@ mod tests {
         assert_eq!(
             value,
             serde_json::json!({
-                "spec_id": "chorus-dispatch-integration",
+                "spec_id": "mast-dispatch-integration",
                 "mode": "background",
                 "dry_run": true
             })

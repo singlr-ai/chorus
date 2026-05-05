@@ -7730,6 +7730,11 @@ impl Workspace {
         if let Some(panel) = dock.visible_panel() {
             let size_state = dock.stored_panel_size_state(panel.as_ref());
             let min_size = panel.min_size(window, cx);
+            container = container
+                .rounded_lg()
+                .border_1()
+                .border_color(cx.theme().colors().border)
+                .bg(cx.theme().colors().panel_background);
             if position.axis() == Axis::Horizontal {
                 let use_flexible = panel.has_flexible_size(window, cx);
                 let flex_grow = if use_flexible {
@@ -8705,6 +8710,8 @@ impl Render for Workspace {
                                         .flex()
                                         .flex_row()
                                         .h_full()
+                                        .p_1()
+                                        .gap_1()
                                         .children(self.render_dock(
                                             DockPosition::Left,
                                             &self.left_dock,
@@ -8717,9 +8724,14 @@ impl Render for Workspace {
                                                 .flex_col()
                                                 .flex_1()
                                                 .overflow_hidden()
+                                                .gap_1()
                                                 .child(
                                                     h_flex()
                                                         .flex_1()
+                                                        .overflow_hidden()
+                                                        .rounded_lg()
+                                                        .border_1()
+                                                        .border_color(colors.border)
                                                         .when_some(paddings.0, |this, p| {
                                                             this.child(p.border_r_1())
                                                         })

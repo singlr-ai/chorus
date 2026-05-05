@@ -28,12 +28,7 @@ use walkdir::WalkDir;
 use std::io::IsTerminal;
 
 const URL_PREFIX: [&'static str; 6] = [
-    "chorus://",
-    "zed://",
-    "http://",
-    "https://",
-    "file://",
-    "ssh://",
+    "mast://", "zed://", "http://", "https://", "file://", "ssh://",
 ];
 
 struct Detect;
@@ -51,21 +46,21 @@ trait InstalledApp {
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "chorus",
+    name = "mast",
     disable_version_flag = true,
-    before_help = "The Chorus CLI binary.
-This CLI is a separate binary that invokes Chorus.
+    before_help = "The Mast CLI binary.
+This CLI is a separate binary that invokes Mast.
 
 Examples:
-    `chorus`
-          Simply opens Chorus
-    `chorus --foreground`
+    `mast`
+          Simply opens Mast
+    `mast --foreground`
           Runs in foreground (shows all logs)
-    `chorus path-to-your-project`
-          Open your project in Chorus
-    `chorus -n path-to-file `
+    `mast path-to-your-project`
+          Open your project in Mast
+    `mast -n path-to-file `
           Open file/folder in a new window",
-    after_help = "To read from stdin, append '-', e.g. 'ps axf | chorus -'"
+    after_help = "To read from stdin, append '-', e.g. 'ps axf | mast -'"
 )]
 struct Args {
     /// Wait for all of the given paths to be opened/closed before exiting.
@@ -82,7 +77,7 @@ struct Args {
     /// Reuse an existing window, replacing its workspace
     #[arg(short, long, overrides_with_all = ["add", "new", "existing", "classic"], hide = true)]
     reuse: bool,
-    /// Open in existing Chorus window
+    /// Open in existing Mast window
     #[arg(short = 'e', long = "existing", overrides_with_all = ["add", "new", "reuse", "classic"])]
     existing: bool,
     /// Use the classic open behavior: new window for directories, reuse for files
@@ -90,32 +85,32 @@ struct Args {
     classic: bool,
     /// Sets a custom directory for all user data (e.g., database, extensions, logs).
     /// This overrides the default platform-specific data directory location:
-    #[cfg_attr(target_os = "macos", doc = "`~/Library/Application Support/Chorus`.")]
-    #[cfg_attr(target_os = "windows", doc = "`%LOCALAPPDATA%\\Chorus`.")]
+    #[cfg_attr(target_os = "macos", doc = "`~/Library/Application Support/Mast`.")]
+    #[cfg_attr(target_os = "windows", doc = "`%LOCALAPPDATA%\\Mast`.")]
     #[cfg_attr(
         not(any(target_os = "windows", target_os = "macos")),
-        doc = "`$XDG_DATA_HOME/chorus`."
+        doc = "`$XDG_DATA_HOME/mast`."
     )]
     #[arg(long, value_name = "DIR")]
     user_data_dir: Option<String>,
-    /// The paths to open in Chorus (space-separated).
+    /// The paths to open in Mast (space-separated).
     ///
     /// Use `path:line:column` syntax to open a file at the given line and column.
     paths_with_position: Vec<String>,
-    /// Print Chorus's version and the app path.
+    /// Print Mast's version and the app path.
     #[arg(short, long)]
     version: bool,
-    /// Run Chorus in the foreground (useful for debugging)
+    /// Run Mast in the foreground (useful for debugging)
     #[arg(long)]
     foreground: bool,
-    /// Custom path to Chorus.app or the chorus binary
-    #[arg(long = "chorus", alias = "zed")]
+    /// Custom path to Mast.app or the mast binary
+    #[arg(long = "mast", alias = "zed")]
     zed: Option<PathBuf>,
-    /// Run Chorus in dev-server mode
+    /// Run Mast in dev-server mode
     #[arg(long)]
     dev_server_token: Option<String>,
     /// The username and WSL distribution to use when opening paths. If not specified,
-    /// Chorus will attempt to open the paths directly.
+    /// Mast will attempt to open the paths directly.
     ///
     /// The username is optional, and if not specified, the default user for the distribution
     /// will be used.
@@ -126,7 +121,7 @@ struct Args {
     #[cfg(target_os = "windows")]
     #[arg(long, value_name = "USER@DISTRO")]
     wsl: Option<String>,
-    /// Not supported in Chorus CLI, only supported on the Chorus app binary
+    /// Not supported in Mast CLI, only supported on the Mast app binary
     /// Will attempt to give the correct command to run
     #[arg(long)]
     system_specs: bool,
@@ -140,7 +135,7 @@ struct Args {
     /// When directories are provided, recurses into them and shows all changed files in a single multi-diff view.
     #[arg(long, action = clap::ArgAction::Append, num_args = 2, value_names = ["OLD_PATH", "NEW_PATH"])]
     diff: Vec<String>,
-    /// Uninstall Chorus from the user system
+    /// Uninstall Mast from the user system
     #[cfg(all(
         any(target_os = "linux", target_os = "macos"),
         not(feature = "no-bundled-uninstall")
@@ -149,7 +144,7 @@ struct Args {
     uninstall: bool,
 
     /// Used for SSH/Git password authentication, to remove the need for netcat as a dependency,
-    /// by having Chorus act like netcat communicating over a Unix socket.
+    /// by having Mast act like netcat communicating over a Unix socket.
     #[arg(long, hide = true)]
     askpass: Option<String>,
 }
@@ -489,7 +484,7 @@ fn main() -> Result<()> {
     }
     let args = Args::parse();
 
-    // `chorus --askpass` makes Chorus operate in nc/netcat mode for use with askpass.
+    // `mast --askpass` makes Mast operate in nc/netcat mode for use with askpass.
     if let Some(socket) = &args.askpass {
         askpass::main(socket);
         return Ok(());
@@ -514,7 +509,7 @@ fn main() -> Result<()> {
     if args.system_specs {
         let path = app.path();
         let msg = [
-            "The `--system-specs` argument is not supported in the Chorus CLI, only on the Chorus app binary.",
+            "The `--system-specs` argument is not supported in the Mast CLI, only on the Mast app binary.",
             "To retrieve the system specs on the command line, run the following command:",
             &format!("{} --system-specs", path.display()),
         ];
@@ -545,8 +540,8 @@ fn main() -> Result<()> {
     }
 
     let (server, server_name) =
-        IpcOneShotServer::<IpcHandshake>::new().context("Handshake before Chorus spawn")?;
-    let url = format!("chorus-cli://{server_name}");
+        IpcOneShotServer::<IpcHandshake>::new().context("Handshake before Mast spawn")?;
+    let url = format!("mast-cli://{server_name}");
 
     let open_behavior = if args.new {
         cli::OpenBehavior::AlwaysNew
@@ -567,7 +562,7 @@ fn main() -> Result<()> {
         {
             use collections::HashMap;
 
-            // On Linux, the desktop entry uses `cli` to spawn `chorus`.
+            // On Linux, the desktop entry uses `cli` to spawn `mast`.
             // We need to handle env vars correctly since std::env::vars() may not contain
             // project-specific vars (e.g. those set by direnv).
             // By setting env to None here, the LSP will use worktree env vars instead,
@@ -617,7 +612,7 @@ fn main() -> Result<()> {
     let (expanded_diff_paths, temp_dirs) = expand_directory_diff_pairs(diff_paths)?;
     diff_paths = expanded_diff_paths;
     // Prevent automatic cleanup of temp directories containing empty stub files
-    // for directory diffs. The CLI process may exit before Chorus has read these
+    // for directory diffs. The CLI process may exit before Mast has read these
     // files (e.g., when RPC-ing into an already-running instance). The files
     // live in the OS temp directory and will be cleaned up on reboot.
     for temp_dir in temp_dirs {
@@ -667,7 +662,7 @@ fn main() -> Result<()> {
             let exit_status = exit_status.clone();
             let user_data_dir_for_thread = user_data_dir.clone();
             move || {
-                let (_, handshake) = server.accept().context("Handshake after Chorus spawn")?;
+                let (_, handshake) = server.accept().context("Handshake after Mast spawn")?;
                 let (tx, rx) = (handshake.requests, handshake.responses);
 
                 #[cfg(target_os = "windows")]
@@ -798,7 +793,7 @@ fn anonymous_fd(path: &str) -> Option<fs::File> {
 }
 
 /// Shows an interactive prompt asking the user to choose the default open
-/// behavior for `chorus <path>`. Returns `None` if the prompt cannot be shown
+/// behavior for `mast <path>`. Returns `None` if the prompt cannot be shown
 /// (e.g. stdin is not a terminal) or the user cancels.
 fn prompt_open_behavior() -> Option<cli::CliBehaviorSetting> {
     if !std::io::stdin().is_terminal() {
@@ -808,16 +803,16 @@ fn prompt_open_behavior() -> Option<cli::CliBehaviorSetting> {
     let blue = console::Style::new().blue();
     let items = [
         format!(
-            "Add to existing Chorus window ({})",
-            blue.apply_to("chorus --existing")
+            "Add to existing Mast window ({})",
+            blue.apply_to("mast --existing")
         ),
-        format!("Open a new window ({})", blue.apply_to("chorus --classic")),
+        format!("Open a new window ({})", blue.apply_to("mast --classic")),
     ];
 
     let prompt = format!(
         "Configure default behavior for {}\n{}",
-        blue.apply_to("chorus <path>"),
-        console::style("You can change this later in Chorus settings"),
+        blue.apply_to("mast <path>"),
+        console::style("You can change this later in Mast settings"),
     );
 
     let selection = dialoguer::Select::new()
@@ -864,9 +859,9 @@ mod linux {
                 let dir = cli.parent().context("no parent path for cli")?;
 
                 let possible_locations = [
-                    "../libexec/chorus-editor",
-                    "../lib/chorus/chorus-editor",
-                    "./chorus",
+                    "../libexec/mast-editor",
+                    "../lib/mast/mast-editor",
+                    "./mast",
                     "../libexec/zed-editor",
                     "../lib/zed/zed-editor",
                     "./zed",
@@ -886,7 +881,7 @@ mod linux {
     impl InstalledApp for App {
         fn zed_version_string(&self) -> String {
             format!(
-                "Chorus {}{}{} – {}",
+                "Mast {}{}{} – {}",
                 if *release_channel::RELEASE_CHANNEL_NAME == "stable" {
                     "".to_string()
                 } else {
@@ -1016,7 +1011,7 @@ mod flatpak {
         if let Some(flatpak_dir) = get_flatpak_dir() {
             let mut args = vec!["/usr/bin/flatpak-spawn".into(), "--host".into()];
             args.append(&mut get_xdg_env_args());
-            args.push("--env=ZED_UPDATE_EXPLANATION=Please use flatpak to update Chorus".into());
+            args.push("--env=ZED_UPDATE_EXPLANATION=Please use flatpak to update Mast".into());
             args.push(
                 format!(
                     "--env={EXTRA_LIB_ENV_NAME}={}",
@@ -1024,17 +1019,17 @@ mod flatpak {
                 )
                 .into(),
             );
-            args.push(flatpak_dir.join("bin").join("chorus").into());
+            args.push(flatpak_dir.join("bin").join("mast").into());
 
             let mut is_app_location_set = false;
             for arg in &env::args_os().collect::<Vec<_>>()[1..] {
                 args.push(arg.clone());
-                is_app_location_set |= arg == "--chorus" || arg == "--zed";
+                is_app_location_set |= arg == "--mast" || arg == "--zed";
             }
 
             if !is_app_location_set {
-                args.push("--chorus".into());
-                args.push(flatpak_dir.join("libexec").join("chorus-editor").into());
+                args.push("--mast".into());
+                args.push(flatpak_dir.join("libexec").join("mast-editor").into());
             }
 
             let error = exec::execvp("/usr/bin/flatpak-spawn", args);
@@ -1045,14 +1040,14 @@ mod flatpak {
 
     pub fn set_bin_if_no_escape(mut args: super::Args) -> super::Args {
         if env::var(NO_ESCAPE_ENV_NAME).is_ok()
-            && env::var("FLATPAK_ID").is_ok_and(|id| id.starts_with("ai.singlr.Chorus"))
+            && env::var("FLATPAK_ID").is_ok_and(|id| id.starts_with("ai.singlr.Mast"))
             && args.zed.is_none()
         {
-            args.zed = Some("/app/libexec/chorus-editor".into());
+            args.zed = Some("/app/libexec/mast-editor".into());
             unsafe {
                 env::set_var(
                     "ZED_UPDATE_EXPLANATION",
-                    "Please use flatpak to update Chorus",
+                    "Please use flatpak to update Mast",
                 )
             };
         }
@@ -1065,7 +1060,7 @@ mod flatpak {
         }
 
         if let Ok(flatpak_id) = env::var("FLATPAK_ID") {
-            if !flatpak_id.starts_with("ai.singlr.Chorus") {
+            if !flatpak_id.starts_with("ai.singlr.Mast") {
                 return None;
             }
 
@@ -1137,7 +1132,7 @@ mod windows {
     impl InstalledApp for App {
         fn zed_version_string(&self) -> String {
             format!(
-                "Chorus {}{}{} – {}",
+                "Mast {}{}{} – {}",
                 if *release_channel::RELEASE_CHANNEL_NAME == "stable" {
                     "".to_string()
                 } else {
@@ -1210,9 +1205,9 @@ mod windows {
                 let dir = cli.parent().context("no parent path for cli")?;
 
                 let possible_locations = [
-                    "../Chorus.exe",
-                    "../lib/chorus/chorus-editor.exe",
-                    "./chorus.exe",
+                    "../Mast.exe",
+                    "../lib/mast/mast-editor.exe",
+                    "./mast.exe",
                     "../Zed.exe",
                     "../lib/zed/zed-editor.exe",
                     "./zed.exe",
@@ -1315,7 +1310,7 @@ mod mac_os {
 
     impl InstalledApp for Bundle {
         fn zed_version_string(&self) -> String {
-            format!("Chorus {} – {}", self.version(), self.path().display(),)
+            format!("Mast {} – {}", self.version(), self.path().display(),)
         }
 
         fn launch(&self, url: String, user_data_dir: Option<&str>) -> anyhow::Result<()> {
@@ -1333,7 +1328,7 @@ mod mac_os {
                             kCFStringEncodingUTF8,
                             ptr::null(),
                         ));
-                        // equivalent to: open chorus-cli:... -a /Applications/Chorus\ Preview.app
+                        // equivalent to: open mast-cli:... -a /Applications/Mast\ Preview.app
                         let urls_to_open =
                             CFArray::from_copyable(&[url_to_open.as_concrete_TypeRef()]);
                         LSOpenFromURLSpec(
@@ -1360,7 +1355,7 @@ mod mac_os {
                         .parent()
                         .with_context(|| format!("Executable {executable:?} path has no parent"))?;
                     let subprocess_stdout_file = fs::File::create(
-                        executable_parent.join("chorus_dev.log"),
+                        executable_parent.join("mast_dev.log"),
                     )
                     .with_context(|| format!("Log file creation in {executable_parent:?}"))?;
                     let subprocess_stdin_file =
@@ -1392,7 +1387,7 @@ mod mac_os {
             user_data_dir: Option<&str>,
         ) -> io::Result<ExitStatus> {
             let path = match self {
-                Bundle::App { app_bundle, .. } => app_bundle.join("Contents/MacOS/chorus"),
+                Bundle::App { app_bundle, .. } => app_bundle.join("Contents/MacOS/mast"),
                 Bundle::LocalPath { executable, .. } => executable.clone(),
             };
 
@@ -1406,7 +1401,7 @@ mod mac_os {
 
         fn path(&self) -> PathBuf {
             match self {
-                Bundle::App { app_bundle, .. } => app_bundle.join("Contents/MacOS/chorus"),
+                Bundle::App { app_bundle, .. } => app_bundle.join("Contents/MacOS/mast"),
                 Bundle::LocalPath { executable, .. } => executable.clone(),
             }
         }

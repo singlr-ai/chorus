@@ -193,7 +193,7 @@ impl DockerExecConnection {
             _ => version.to_string(),
         };
         let binary_name = format!(
-            "chorus-remote-server-{}-{}",
+            "mast-remote-server-{}-{}",
             release_channel.dev_name(),
             version_str
         );
@@ -292,7 +292,7 @@ impl DockerExecConnection {
             ReleaseChannel::Nightly => Ok(None),
             ReleaseChannel::Dev => {
                 anyhow::bail!(
-                    "CHORUS_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
+                    "MAST_BUILD_REMOTE_SERVER is not set and no remote server exists at ({:?})",
                     dst_path
                 )
             }

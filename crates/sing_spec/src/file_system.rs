@@ -302,7 +302,7 @@ fn temporary_remote_path(path: &Path) -> Result<PathBuf> {
         .duration_since(UNIX_EPOCH)
         .context("system clock is before unix epoch")?
         .as_nanos();
-    Ok(path.with_file_name(format!(".{file_name}.chorus-tmp-{}-{nonce}", process::id())))
+    Ok(path.with_file_name(format!(".{file_name}.mast-tmp-{}-{nonce}", process::id())))
 }
 
 fn path_string(path: &Path) -> String {

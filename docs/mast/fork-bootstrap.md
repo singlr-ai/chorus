@@ -1,11 +1,11 @@
-# Chorus Fork Bootstrap
+# Mast Fork Bootstrap
 
 ## Upstream Baseline
 
 - Upstream repository: `zed-industries/zed`
 - Synced upstream revision: `cbd856ff3e`
 - Sync date: `2026-04-13`
-- Active Chorus bootstrap branch: `feat/chorus-fork-bootstrap`
+- Active Mast bootstrap branch: `feat/mast-fork-bootstrap`
 
 ## Supported Build Paths
 
@@ -35,10 +35,10 @@
 
 - `Cargo.toml` for workspace members and shared crate paths
 - `crates/zed` for app-level initialization and binary ownership
-- `crates/workspace` for Chorus panel registration seams
+- `crates/workspace` for Mast panel registration seams
 - App metadata and packaging scripts when branding work starts
 
-## Chorus-Owned Files In This Bootstrap
+## Mast-Owned Files In This Bootstrap
 
 - `Cargo.toml`
 - `crates/sing_bridge/**`
@@ -46,11 +46,11 @@
 - `crates/sing_orchestrator/**`
 - `crates/sing_project/**`
 - `crates/sing_spec/**`
-- `docs/chorus/fork-bootstrap.md`
+- `docs/mast/fork-bootstrap.md`
 
 ## Planned Crate Ownership
 
-- `sing_bridge`: SSH and `sing --json` integration boundary
+- `sing_bridge`: SSH and `sail --json` integration boundary
 - `sing_project`: project panel and remote-open coordination
 - `sing_spec`: spec domain and board model
 - `sing_dispatch`: dispatch actions and agent lifecycle tracking
@@ -59,7 +59,7 @@
 ## Guardrails
 
 - Keep `default-members = ["crates/zed"]`
-- Land Chorus feature work in `crates/sing_*` first
+- Land Mast feature work in `crates/sing_*` first
 - Treat edits outside the reserved fork touch points as exceptions that need explicit justification
 
 ## Git Remotes
@@ -70,5 +70,5 @@
 ## CI and Artifact Builds
 
 - Public GitHub-hosted workflows live alongside upstream Zed workflows
-- Zed-only workflows stay fenced behind repository guards so Chorus does not queue private-runner jobs
-- MBP testing instructions and artifact flow are documented in `docs/chorus/github-actions.md`
+- Zed-only workflows stay fenced behind repository guards so Mast does not queue private-runner jobs
+- MBP testing instructions and artifact flow are documented in `docs/mast/github-actions.md`

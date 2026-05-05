@@ -1848,7 +1848,6 @@ impl ProtoClient for Client {
 }
 
 pub const ZED_URL_SCHEME: &str = release_channel::APP_URL_SCHEME;
-pub const LEGACY_ZED_URL_SCHEME: &str = release_channel::LEGACY_APP_URL_SCHEME;
 
 /// A parsed Zed link that can be handled internally by the application.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1877,7 +1876,7 @@ pub fn parse_zed_link(link: &str, cx: &App) -> Option<ZedLink> {
                 .and_then(|result| result.strip_prefix("://"))
         })
         .or_else(|| {
-            link.strip_prefix(LEGACY_ZED_URL_SCHEME)
+            link.strip_prefix("zed")
                 .and_then(|result| result.strip_prefix("://"))
         })?;
 
@@ -2342,7 +2341,7 @@ mod tests {
     fn test_parse_zed_link_accepts_primary_scheme(cx: &mut TestAppContext) {
         init_test(cx);
 
-        let link = cx.update(|cx| parse_zed_link("chorus://channel/team-42", cx));
+        let link = cx.update(|cx| parse_zed_link("mast://channel/team-42", cx));
 
         assert_eq!(link, Some(ZedLink::Channel { channel_id: 42 }));
     }
