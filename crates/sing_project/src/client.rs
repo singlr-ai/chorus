@@ -15,16 +15,16 @@ pub trait SingProjectClient: Send + Sync {
     async fn start_project(&self, project: &str) -> Result<ProjectStartResult>;
     async fn stop_project(&self, project: &str) -> Result<ProjectStopResult>;
     async fn list_specs(&self, _project: &str) -> Result<SpecBoard> {
-        anyhow::bail!("spec board is unavailable from this project client")
+        anyhow::bail!("spec board is unavailable from this Sail client")
     }
     async fn agent_status(&self, _project: &str) -> Result<ProjectAgentStatus> {
-        anyhow::bail!("agent status is unavailable from this project client")
+        anyhow::bail!("agent status is unavailable from this Sail client")
     }
     async fn agent_log(&self, _project: &str, _tail: u32) -> Result<AgentLog> {
-        anyhow::bail!("agent log is unavailable from this project client")
+        anyhow::bail!("agent log is unavailable from this Sail client")
     }
     async fn agent_report(&self, _project: &str) -> Result<AgentReport> {
-        anyhow::bail!("agent report is unavailable from this project client")
+        anyhow::bail!("agent report is unavailable from this Sail client")
     }
 }
 

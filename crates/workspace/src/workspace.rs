@@ -7731,7 +7731,9 @@ impl Workspace {
             let size_state = dock.stored_panel_size_state(panel.as_ref());
             let min_size = panel.min_size(window, cx);
             container = container
-                .rounded_lg()
+                .when(position == DockPosition::Bottom, |container| {
+                    container.rounded_lg()
+                })
                 .border_1()
                 .border_color(cx.theme().colors().border)
                 .bg(cx.theme().colors().panel_background);
