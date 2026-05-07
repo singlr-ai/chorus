@@ -4,8 +4,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures::future::join_all;
 use sing_bridge::{
-    AgentSessionInfo, ProjectConfig, ProjectRuntimes, ProjectSpecAvailability, ProjectStatus,
-    ProjectSummary,
+    AgentSessionInfo, ProjectConfig, ProjectContainerLimits, ProjectResources, ProjectRuntimes,
+    ProjectSpecAvailability, ProjectStatus, ProjectSummary,
 };
 
 use crate::client::SingProjectClient;
@@ -38,6 +38,8 @@ pub struct ProjectRow {
     pub status: ProjectStatus,
     pub ip: Option<String>,
     pub description: Option<String>,
+    pub resources: Option<ProjectResources>,
+    pub container_limits: Option<ProjectContainerLimits>,
     pub runtimes: Option<ProjectRuntimes>,
     pub agent_session: AgentSessionInfo,
     pub specs: ProjectSpecAvailability,
@@ -52,6 +54,8 @@ impl ProjectRow {
                 status: config.container_status,
                 ip: config.container_ip.or(summary.ip),
                 description: config.description,
+                resources: config.resources,
+                container_limits: config.container_limits,
                 runtimes: config.runtimes,
                 agent_session: config.agent_session,
                 specs: config.specs,
@@ -64,6 +68,8 @@ impl ProjectRow {
                     status: summary.status,
                     ip: summary.ip,
                     description: None,
+                    resources: None,
+                    container_limits: None,
                     runtimes: None,
                     agent_session: AgentSessionInfo {
                         available: false,
@@ -232,7 +238,7 @@ impl ProjectRow {
             }
         } else if let Some(reason) = self.specs.reason.as_deref() {
             match reason {
-                "project_stopped" => "Start project to load specs".to_string(),
+                "project_stopped" => "Start Sail to load specs".to_string(),
                 _ => format!("Specs need attention · {}", humanize_reason(reason)),
             }
         } else {
@@ -257,7 +263,7 @@ impl ProjectRow {
             parts.join(" | ")
         } else if let Some(reason) = self.specs.reason.as_deref() {
             match reason {
-                "project_stopped" => "Start the project to load its spec board".to_string(),
+                "project_stopped" => "Start the Sail to load its spec board".to_string(),
                 _ => format!("Check spec setup: {}", humanize_reason(reason)),
             }
         } else {
@@ -321,6 +327,28 @@ impl ProjectRow {
         }
 
         (!parts.is_empty()).then(|| parts.join(" | "))
+    }
+
+    pub fn cpu_summary(&self) -> Option<String> {
+        self.container_limits
+            .as_ref()
+            .and_then(|limits| limits.cpu.clone())
+            .or_else(|| {
+                self.resources
+                    .as_ref()
+                    .map(|resources| format!("{} CPU", resources.cpu))
+            })
+    }
+
+    pub fn memory_summary(&self) -> Option<String> {
+        self.container_limits
+            .as_ref()
+            .and_then(|limits| limits.memory.clone())
+            .or_else(|| {
+                self.resources
+                    .as_ref()
+                    .map(|resources| resources.memory.clone())
+            })
     }
 }
 
@@ -620,6 +648,8 @@ mod tests {
                 status: ProjectStatus::Running,
                 ip: None,
                 description: None,
+                resources: None,
+                container_limits: None,
                 runtimes: None,
                 agent_session: AgentSessionInfo::default(),
                 specs: ProjectSpecAvailability::default(),
@@ -630,6 +660,8 @@ mod tests {
                 status: ProjectStatus::Stopped,
                 ip: None,
                 description: None,
+                resources: None,
+                container_limits: None,
                 runtimes: None,
                 agent_session: AgentSessionInfo::default(),
                 specs: ProjectSpecAvailability::default(),
@@ -652,6 +684,8 @@ mod tests {
             status: ProjectStatus::Stopped,
             ip: None,
             description: None,
+            resources: None,
+            container_limits: None,
             runtimes: None,
             agent_session: AgentSessionInfo {
                 available: false,
@@ -676,11 +710,8 @@ mod tests {
 
         assert_eq!(row.agent_summary(), "Agent unavailable | Project stopped");
         assert_eq!(row.agent_detail(), "Agent unavailable | Project stopped");
-        assert_eq!(row.spec_summary(), "Start project to load specs");
-        assert_eq!(
-            row.spec_detail(),
-            "Start the project to load its spec board"
-        );
+        assert_eq!(row.spec_summary(), "Start Sail to load specs");
+        assert_eq!(row.spec_detail(), "Start the Sail to load its spec board");
     }
 
     #[test]
@@ -728,6 +759,8 @@ mod tests {
             status: ProjectStatus::Running,
             ip: None,
             description: None,
+            resources: None,
+            container_limits: None,
             runtimes: None,
             agent_session: AgentSessionInfo {
                 available,

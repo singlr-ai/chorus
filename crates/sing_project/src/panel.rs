@@ -5,9 +5,9 @@ use anyhow::{Context as _, Result, anyhow};
 use db::kvp::KeyValueStore;
 use editor::{Editor, EditorEvent};
 use gpui::{
-    Action, AnyElement, App, AsyncWindowContext, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement, Styled,
-    Task, WeakEntity, Window, actions, px,
+    Action, AnyElement, App, AsyncWindowContext, ClickEvent, Context, ElementId, Entity,
+    EventEmitter, FocusHandle, Focusable, FontWeight, ParentElement, Pixels, Render, SharedString,
+    StatefulInteractiveElement, Styled, Task, WeakEntity, Window, actions, hsla, px,
 };
 use recent_projects::open_remote_project;
 use serde::{Deserialize, Serialize};
@@ -16,8 +16,8 @@ use sing_bridge::{
     SpecStatus,
 };
 use ui::{
-    Button, Chip, Color, Icon, IconButtonShape, IconName, IconSize, Indicator, Label, LabelSize,
-    ListItem, ListItemSpacing, SpinnerLabel, TintColor, Tooltip, prelude::*,
+    Button, Chip, Color, CopyButton, Icon, IconButtonShape, IconName, IconSize, Indicator, Label,
+    LabelSize, SpinnerLabel, TintColor, Tooltip, prelude::*,
 };
 use util::{ResultExt, TryFutureExt};
 use workspace::{
@@ -163,7 +163,7 @@ impl SingProjectPanel {
         cx.new(|cx| {
             let search_bar = cx.new(|cx| {
                 let mut editor = Editor::single_line(window, cx);
-                editor.set_placeholder_text("Filter projects...", window, cx);
+                editor.set_placeholder_text("Filter sails...", window, cx);
                 editor
             });
             cx.subscribe(&search_bar, |_this, _, event: &EditorEvent, cx| {
@@ -466,6 +466,7 @@ impl SingProjectPanel {
                 .as_deref()
                 .is_some_and(|value| contains_query(value, query))
             || contains_query(project.status_label(), query)
+            || contains_query(&project.list_summary(), query)
             || contains_query(&project.agent_summary(), query)
             || contains_query(&project.spec_summary(), query)
             || contains_query(&project.agent_detail(), query)
@@ -491,22 +492,10 @@ impl SingProjectPanel {
         })
     }
 
-    fn project_status_chip(&self, project: &ProjectRow) -> Chip {
-        Self::badge(project.status_label(), status_color(project.status))
-    }
-
-    fn badge(label: impl Into<String>, color: Color) -> Chip {
-        Chip::new(label.into()).label_color(color)
-    }
-
-    fn project_secondary_line(&self, project: &ProjectRow) -> Option<String> {
-        Some(project.list_summary())
-    }
-
     fn render_refresh_control(&self, cx: &mut Context<Self>) -> AnyElement {
         let tooltip = match self.refresh_status_label() {
-            Some(refreshed) => format!("Refresh project state ({refreshed})"),
-            None => "Refresh project state".to_string(),
+            Some(refreshed) => format!("Refresh Sail state ({refreshed})"),
+            None => "Refresh Sail state".to_string(),
         };
 
         if self.loading {
@@ -521,14 +510,21 @@ impl SingProjectPanel {
                 .into_any_element();
         }
 
-        IconButton::new("sing-project-refresh", IconName::RotateCw)
-            .shape(IconButtonShape::Square)
-            .icon_size(IconSize::Small)
-            .style(ButtonStyle::Subtle)
+        h_flex()
+            .id("sing-project-refresh-slot")
+            .size(px(28.))
+            .items_center()
+            .justify_center()
             .tooltip(Tooltip::text(tooltip))
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.refresh(window, cx);
-            }))
+            .child(
+                IconButton::new("sing-project-refresh", IconName::RotateCw)
+                    .shape(IconButtonShape::Square)
+                    .icon_size(IconSize::Small)
+                    .style(ButtonStyle::Subtle)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.refresh(window, cx);
+                    })),
+            )
             .into_any_element()
     }
 
@@ -549,7 +545,7 @@ impl SingProjectPanel {
                     .items_center()
                     .justify_between()
                     .gap_2()
-                    .child(Label::new("Projects"))
+                    .child(Label::new("Sails").weight(FontWeight::SEMIBOLD))
                     .child(self.render_refresh_control(cx)),
             )
             .child(
@@ -593,6 +589,139 @@ impl SingProjectPanel {
         })
     }
 
+    fn render_sail_row(
+        &self,
+        project: &ProjectRow,
+        selected: bool,
+        project_name: String,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        let row_background = if selected {
+            theme.colors().ghost_element_selected
+        } else {
+            theme.colors().panel_background
+        };
+        let running_or_stopped = project.status_label();
+        let in_progress = project
+            .specs
+            .counts
+            .as_ref()
+            .map(|counts| counts.in_progress)
+            .unwrap_or_default();
+        let ready = project.ready_count().unwrap_or_default();
+        let blocked = project.blocked_count().unwrap_or_default();
+        let sync_label = self
+            .refresh_status_label()
+            .map(|label| label.replacen("Updated ", "", 1))
+            .unwrap_or_else(|| "not synced".to_string());
+
+        h_flex()
+            .id(format!("sing-project-row-{project_name}"))
+            .group("sail-row")
+            .w_full()
+            .h(px(76.))
+            .min_h(px(76.))
+            .flex_none()
+            .items_stretch()
+            .overflow_hidden()
+            .rounded_sm()
+            .border_1()
+            .border_color(if selected {
+                mast_accent().opacity(0.42)
+            } else {
+                theme.colors().border_variant
+            })
+            .bg(row_background)
+            .hover(|style| style.bg(theme.colors().ghost_element_hover))
+            .cursor_pointer()
+            .child(div().w(px(3.)).h_full().flex_none().bg(if selected {
+                mast_accent()
+            } else {
+                theme.colors().border_variant.opacity(0.0)
+            }))
+            .child(
+                v_flex()
+                    .min_w(px(0.))
+                    .flex_1()
+                    .gap_1()
+                    .px_2()
+                    .py_1p5()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .min_w(px(0.))
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .min_w(px(0.))
+                                    .gap_1p5()
+                                    .items_center()
+                                    .child(Indicator::dot().color(status_color(project.status)))
+                                    .child(
+                                        Label::new(project.name.clone())
+                                            .size(LabelSize::Small)
+                                            .weight(FontWeight::SEMIBOLD)
+                                            .truncate(),
+                                    ),
+                            )
+                            .child(
+                                Label::new(running_or_stopped)
+                                    .size(LabelSize::XSmall)
+                                    .color(status_color(project.status))
+                                    .flex_shrink_0(),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .min_w(px(0.))
+                            .gap_1()
+                            .flex_wrap()
+                            .child(sail_count_pill("Ready", ready, Color::Success, cx))
+                            .child(sail_count_pill(
+                                "In progress",
+                                in_progress,
+                                Color::Accent,
+                                cx,
+                            ))
+                            .child(sail_count_pill("Blocked", blocked, Color::Warning, cx)),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .min_w(px(0.))
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .child(
+                                Label::new(project.agent_summary())
+                                    .size(LabelSize::XSmall)
+                                    .color(Color::Muted)
+                                    .truncate(),
+                            )
+                            .child(
+                                Label::new(sync_label)
+                                    .size(LabelSize::XSmall)
+                                    .color(Color::Muted)
+                                    .flex_shrink_0(),
+                            ),
+                    ),
+            )
+            .tooltip(Tooltip::text(format!(
+                "{} Sail · {} · {}",
+                project.name,
+                project.status_label(),
+                project.spec_detail()
+            )))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_project_home(project_name.clone(), window, cx);
+            }))
+            .into_any_element()
+    }
+
     fn render_projects(&self, cx: &mut Context<Self>) -> AnyElement {
         if self.loading && self.projects.is_empty() {
             return v_flex()
@@ -602,7 +731,7 @@ impl SingProjectPanel {
                 .gap_2()
                 .child(SpinnerLabel::dots_variant().size(LabelSize::Large))
                 .child(
-                    Label::new("Loading projects")
+                    Label::new("Loading Sails")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -615,9 +744,9 @@ impl SingProjectPanel {
                 .justify_center()
                 .items_center()
                 .gap_2()
-                .child(Icon::new(IconName::Server).color(Color::Muted))
+                .child(mast_mark(px(32.)))
                 .child(
-                    Label::new("No projects found")
+                    Label::new("No Sails found")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -633,7 +762,7 @@ impl SingProjectPanel {
                 .gap_2()
                 .child(Icon::new(IconName::MagnifyingGlass).color(Color::Muted))
                 .child(
-                    Label::new("No projects match this filter")
+                    Label::new("No Sails match this filter")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -645,37 +774,12 @@ impl SingProjectPanel {
             .into_iter()
             .map(|project| {
                 let project_name = project.name.clone();
-                let status_color = status_color(project.status);
-                let secondary_line = self.project_secondary_line(project);
-                ListItem::new(format!("sing-project-row-{project_name}"))
-                    .inset(true)
-                    .spacing(ListItemSpacing::Sparse)
-                    .toggle_state(selected_project == Some(project_name.as_str()))
-                    .start_slot(Indicator::dot().color(status_color))
-                    .end_slot(self.project_status_chip(project))
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .gap_1()
-                            .child(
-                                Label::new(project.name.clone())
-                                    .size(LabelSize::Small)
-                                    .truncate(),
-                            )
-                            .when_some(secondary_line, |element, line| {
-                                element.child(
-                                    Label::new(line)
-                                        .size(LabelSize::Small)
-                                        .color(Color::Muted)
-                                        .truncate(),
-                                )
-                            }),
-                    )
-                    .tooltip(Tooltip::text(project.name.clone()))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_project_home(project_name.clone(), window, cx);
-                    }))
-                    .into_any_element()
+                self.render_sail_row(
+                    project,
+                    selected_project == Some(project_name.as_str()),
+                    project_name,
+                    cx,
+                )
             })
             .collect::<Vec<_>>();
 
@@ -690,21 +794,19 @@ impl SingProjectPanel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProjectHomeMode {
-    Summary,
+    Overview,
     Specs,
-    ArchivedSpecs,
-    Kanban,
+    Board,
     Agents,
     Activity,
     Settings,
 }
 
 impl ProjectHomeMode {
-    const ALL: [Self; 7] = [
-        Self::Summary,
+    const ALL: [Self; 6] = [
+        Self::Overview,
         Self::Specs,
-        Self::ArchivedSpecs,
-        Self::Kanban,
+        Self::Board,
         Self::Agents,
         Self::Activity,
         Self::Settings,
@@ -712,13 +814,23 @@ impl ProjectHomeMode {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Summary => "Summary",
+            Self::Overview => "Overview",
             Self::Specs => "Specs",
-            Self::ArchivedSpecs => "Archived",
-            Self::Kanban => "Kanban",
+            Self::Board => "Board",
             Self::Agents => "Agents",
             Self::Activity => "Activity",
             Self::Settings => "Settings",
+        }
+    }
+
+    fn icon(self) -> IconName {
+        match self {
+            Self::Overview => IconName::Info,
+            Self::Specs => IconName::ListTodo,
+            Self::Board => IconName::FileTree,
+            Self::Agents => IconName::ZedAssistant,
+            Self::Activity => IconName::Clock,
+            Self::Settings => IconName::Settings,
         }
     }
 }
@@ -767,7 +879,7 @@ impl ProjectHomeItem {
             client: None,
             project_name: project.name.clone(),
             project: Some(project),
-            selected_mode: ProjectHomeMode::Summary,
+            selected_mode: ProjectHomeMode::Overview,
             loading: false,
             pending_action: None,
             last_error: None,
@@ -796,7 +908,7 @@ impl ProjectHomeItem {
 
     fn mark_missing(&mut self, cx: &mut Context<Self>) {
         self.project = None;
-        self.last_error = Some("Project is no longer present after refresh".to_string());
+        self.last_error = Some("Sail is no longer present after refresh".to_string());
         cx.notify();
     }
 
@@ -830,7 +942,7 @@ impl ProjectHomeItem {
                 let project = projects
                     .into_iter()
                     .find(|project| project.name == project_name)
-                    .ok_or_else(|| anyhow!("project `{project_name}` was not found"))?;
+                    .ok_or_else(|| anyhow!("Sail `{project_name}` was not found"))?;
 
                 let spec_board = project.specs.available.then(|| {
                     let client = client.clone();
@@ -965,11 +1077,11 @@ impl ProjectHomeItem {
                 match action {
                     ProjectActionKind::Start => {
                         let result = client.start_project(&project).await?;
-                        Ok(format!("Started {}", result.name))
+                        Ok(format!("Started {} Sail", result.name))
                     }
                     ProjectActionKind::Stop => {
                         client.stop_project(&project).await?;
-                        Ok(format!("Stopped {project}"))
+                        Ok(format!("Stopped {project} Sail"))
                     }
                     ProjectActionKind::Open => {
                         let target = client.project_remote_target(&project).await?;
@@ -1077,11 +1189,18 @@ impl ProjectHomeItem {
         let open_pending = self.pending_action == Some(ProjectActionKind::Open);
         let start_pending = self.pending_action == Some(ProjectActionKind::Start);
         let stop_pending = self.pending_action == Some(ProjectActionKind::Stop);
+        let description = project
+            .and_then(|project| project.description.as_ref())
+            .cloned()
+            .unwrap_or_else(|| "SAIL-managed development environment".to_string());
+        let last_sync = self
+            .refresh_status_label()
+            .unwrap_or_else(|| "Not synced yet".to_string());
 
         v_flex()
             .w_full()
-            .gap_2()
-            .p_3()
+            .gap_3()
+            .p_4()
             .border_b_1()
             .border_color(theme.colors().border_variant)
             .bg(theme.colors().editor_background)
@@ -1093,26 +1212,33 @@ impl ProjectHomeItem {
                     .gap_3()
                     .child(
                         v_flex()
+                            .min_w(px(0.))
+                            .flex_1()
                             .gap_1()
                             .child(
                                 h_flex()
                                     .gap_2()
                                     .items_center()
-                                    .child(Icon::new(IconName::Server).color(Color::Muted))
+                                    .child(mast_mark(px(28.)))
                                     .child(
-                                        Label::new(self.project_name.clone())
-                                            .size(LabelSize::Large),
+                                        Label::new(format!("{} Sail", self.project_name))
+                                            .size(LabelSize::Large)
+                                            .weight(FontWeight::SEMIBOLD)
+                                            .truncate(),
                                     ),
                             )
-                            .when_some(
-                                project.and_then(|project| project.description.as_ref()),
-                                |element, description| {
-                                    element
-                                        .child(Label::new(description.clone()).color(Color::Muted))
-                                },
-                            )
+                            .child(copyable_text(
+                                format!("sing-project-copy-description-{}", self.project_name),
+                                description,
+                                Color::Muted,
+                                LabelSize::Small,
+                            ))
                             .when_some(self.last_error.as_ref(), |element, error| {
-                                element.child(Label::new(error.clone()).color(Color::Warning))
+                                element.child(readable_error_row(
+                                    "Sail state could not be refreshed",
+                                    error.clone(),
+                                    cx,
+                                ))
                             }),
                     )
                     .when_some(project, |element, project| {
@@ -1125,16 +1251,106 @@ impl ProjectHomeItem {
                         .w_full()
                         .gap_2()
                         .flex_wrap()
+                        .child(home_metadata_pill(
+                            IconName::Server,
+                            project.status_label(),
+                            status_color(project.status),
+                            cx,
+                        ))
+                        .child(home_metadata_pill(
+                            IconName::ZedAssistant,
+                            project.agent_badge(),
+                            agent_color(project),
+                            cx,
+                        ))
+                        .child(home_metadata_pill(
+                            IconName::ListTodo,
+                            project.spec_detail(),
+                            Color::Muted,
+                            cx,
+                        ))
+                        .when_some(project.branch(), |element, branch| {
+                            element.child(home_metadata_pill(
+                                IconName::GitBranch,
+                                branch.to_string(),
+                                Color::Accent,
+                                cx,
+                            ))
+                        })
+                        .child(home_metadata_pill(
+                            IconName::Clock,
+                            last_sync.clone(),
+                            Color::Muted,
+                            cx,
+                        )),
+                )
+            })
+            .when_some(project, |element, project| {
+                let ip = project.ip.clone();
+                let cpu = project.cpu_summary();
+                let memory = project.memory_summary();
+                element.child(
+                    h_flex()
+                        .w_full()
+                        .gap_2()
+                        .flex_wrap()
+                        .child(header_metric(
+                            "IP",
+                            ip.clone().unwrap_or_else(|| "Unavailable".to_string()),
+                            if ip.is_some() {
+                                Color::Default
+                            } else {
+                                Color::Muted
+                            },
+                            cx,
+                        ))
+                        .child(header_metric(
+                            "CPU",
+                            cpu.clone().unwrap_or_else(|| "Not reported".to_string()),
+                            if cpu.is_some() {
+                                Color::Default
+                            } else {
+                                Color::Muted
+                            },
+                            cx,
+                        ))
+                        .child(header_metric(
+                            "Memory",
+                            memory.clone().unwrap_or_else(|| "Not reported".to_string()),
+                            if memory.is_some() {
+                                Color::Default
+                            } else {
+                                Color::Muted
+                            },
+                            cx,
+                        ))
+                        .child(header_metric(
+                            "Agent",
+                            project.agent_detail(),
+                            agent_color(project),
+                            cx,
+                        )),
+                )
+            })
+            .when_some(project, |element, project| {
+                element.child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .gap_1p5()
+                        .flex_wrap()
                         .child(
                             Button::new(
                                 format!("sing-project-home-open-{}", self.project_name),
-                                "Open remote",
+                                "Open Remote",
                             )
                             .style(ButtonStyle::Filled)
+                            .size(ButtonSize::Default)
                             .label_size(LabelSize::Small)
+                            .start_icon(Icon::new(IconName::ArrowUpRight).size(IconSize::Small))
                             .loading(open_pending)
                             .disabled(!project.can_open() || start_pending || stop_pending)
-                            .tooltip(Tooltip::text("Open this project in a remote workspace"))
+                            .tooltip(Tooltip::text("Open this Sail in a remote workspace"))
                             .on_click(cx.listener(
                                 |this, _, window, cx| {
                                     this.open_project(window, cx);
@@ -1148,10 +1364,12 @@ impl ProjectHomeItem {
                                     "Start",
                                 )
                                 .style(ButtonStyle::Tinted(TintColor::Success))
+                                .size(ButtonSize::Default)
                                 .label_size(LabelSize::Small)
+                                .start_icon(Icon::new(IconName::PlayOutlined).size(IconSize::Small))
                                 .loading(start_pending)
                                 .disabled(open_pending || stop_pending)
-                                .tooltip(Tooltip::text("Run sail up for this project"))
+                                .tooltip(Tooltip::text("Run sail up for this Sail"))
                                 .on_click(cx.listener(
                                     |this, _, window, cx| {
                                         this.start_project(window, cx);
@@ -1166,10 +1384,12 @@ impl ProjectHomeItem {
                                     "Stop",
                                 )
                                 .style(ButtonStyle::Tinted(TintColor::Warning))
+                                .size(ButtonSize::Default)
                                 .label_size(LabelSize::Small)
+                                .start_icon(Icon::new(IconName::Stop).size(IconSize::Small))
                                 .loading(stop_pending)
                                 .disabled(open_pending || start_pending)
-                                .tooltip(Tooltip::text("Run sail down for this project"))
+                                .tooltip(Tooltip::text("Run sail down for this Sail"))
                                 .on_click(cx.listener(
                                     |this, _, window, cx| {
                                         this.stop_project(window, cx);
@@ -1177,25 +1397,37 @@ impl ProjectHomeItem {
                                 )),
                             )
                         })
-                        .child(
-                            Button::new(
-                                format!("sing-project-home-refresh-{}", self.project_name),
-                                "Refresh",
-                            )
-                            .style(ButtonStyle::Outlined)
-                            .label_size(LabelSize::Small)
-                            .loading(self.loading)
-                            .disabled(self.pending_action.is_some())
-                            .tooltip(Tooltip::text(
-                                self.refresh_status_label()
-                                    .unwrap_or_else(|| "Refresh project home".to_string()),
-                            ))
-                            .on_click(cx.listener(
-                                |this, _, window, cx| {
-                                    this.refresh(window, cx);
-                                },
-                            )),
-                        ),
+                        .child(toolbar_icon_button(
+                            format!("sing-project-home-refresh-{}", self.project_name),
+                            if self.loading {
+                                IconName::LoadCircle
+                            } else {
+                                IconName::RotateCw
+                            },
+                            "Refresh Sail Home",
+                            self.pending_action.is_some(),
+                            cx.listener(|this, _, window, cx| {
+                                this.refresh(window, cx);
+                            }),
+                        ))
+                        .child(toolbar_icon_button(
+                            format!("sing-project-home-activity-{}", self.project_name),
+                            IconName::ToolTerminal,
+                            "Show Activity",
+                            false,
+                            cx.listener(|this, _, _, cx| {
+                                this.select_mode(ProjectHomeMode::Activity, cx);
+                            }),
+                        ))
+                        .child(toolbar_icon_button(
+                            format!("sing-project-home-settings-{}", self.project_name),
+                            IconName::Settings,
+                            "Show Settings",
+                            false,
+                            cx.listener(|this, _, _, cx| {
+                                this.select_mode(ProjectHomeMode::Settings, cx);
+                            }),
+                        )),
                 )
             })
             .into_any_element()
@@ -1204,8 +1436,9 @@ impl ProjectHomeItem {
     fn render_mode_picker(&self, cx: &mut Context<Self>) -> AnyElement {
         h_flex()
             .w_full()
-            .gap_1()
-            .p_2()
+            .gap_1p5()
+            .px_3()
+            .py_2()
             .border_b_1()
             .border_color(cx.theme().colors().border_variant)
             .bg(cx.theme().colors().panel_background)
@@ -1214,11 +1447,13 @@ impl ProjectHomeItem {
                     format!("sing-project-home-mode-{}-{mode:?}", self.project_name),
                     mode.label(),
                 )
+                .start_icon(Icon::new(mode.icon()).size(IconSize::Small))
                 .style(if self.selected_mode == mode {
-                    ButtonStyle::Filled
+                    ButtonStyle::Tinted(TintColor::Accent)
                 } else {
                     ButtonStyle::Subtle
                 })
+                .size(ButtonSize::Default)
                 .label_size(LabelSize::Small)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.select_mode(mode, cx);
@@ -1236,7 +1471,7 @@ impl ProjectHomeItem {
                 .items_center()
                 .gap_2()
                 .child(Icon::new(IconName::Warning).color(Color::Warning))
-                .child(Label::new("Project unavailable").color(Color::Warning))
+                .child(Label::new("Sail unavailable").color(Color::Warning))
                 .into_any_element();
         };
 
@@ -1245,10 +1480,9 @@ impl ProjectHomeItem {
             .flex_1()
             .overflow_y_scroll()
             .child(match self.selected_mode {
-                ProjectHomeMode::Summary => self.render_summary(project, cx),
+                ProjectHomeMode::Overview => self.render_overview(project, cx),
                 ProjectHomeMode::Specs => self.render_specs(project, cx),
-                ProjectHomeMode::ArchivedSpecs => self.render_archived_specs(cx),
-                ProjectHomeMode::Kanban => self.render_kanban(cx),
+                ProjectHomeMode::Board => self.render_board(cx),
                 ProjectHomeMode::Agents => self.render_agents(project, cx),
                 ProjectHomeMode::Activity => self.render_activity(cx),
                 ProjectHomeMode::Settings => self.render_settings(project, cx),
@@ -1256,7 +1490,7 @@ impl ProjectHomeItem {
             .into_any_element()
     }
 
-    fn render_summary(&self, project: &ProjectRow, cx: &mut Context<Self>) -> AnyElement {
+    fn render_overview(&self, project: &ProjectRow, cx: &mut Context<Self>) -> AnyElement {
         let activity = project.agent_activity();
         let runtime_summary = project
             .runtime_summary()
@@ -1306,7 +1540,7 @@ impl ProjectHomeItem {
                     )),
             )
             .child(section_panel(
-                "Project details",
+                "Sail details",
                 v_flex()
                     .w_full()
                     .gap_1p5()
@@ -1356,6 +1590,11 @@ impl ProjectHomeItem {
             .iter()
             .filter(|spec| spec.spec.status != SpecStatus::Done)
             .collect::<Vec<_>>();
+        let archived_specs = board
+            .specs
+            .iter()
+            .filter(|spec| spec.spec.status == SpecStatus::Done)
+            .collect::<Vec<_>>();
 
         v_flex()
             .w_full()
@@ -1393,72 +1632,65 @@ impl ProjectHomeItem {
             )
             .child(section_panel(
                 "Active specs",
-                specs_list(active_specs, "No active specs", cx),
+                specs_list(active_specs, "No specs loaded", cx),
+                cx,
+            ))
+            .child(section_panel(
+                "Archived specs",
+                specs_list(archived_specs, "No archived specs", cx),
                 cx,
             ))
             .into_any_element()
     }
 
     fn render_spec_unavailable(&self, project: &ProjectRow, cx: &mut Context<Self>) -> AnyElement {
-        let message = self
-            .spec_error
-            .clone()
-            .unwrap_or_else(|| project.spec_detail());
-
         v_flex()
             .w_full()
             .gap_3()
             .p_3()
             .child(section_panel(
                 "Specs",
-                v_flex()
-                    .w_full()
-                    .gap_2()
-                    .child(Label::new(message).color(Color::Muted))
-                    .into_any_element(),
+                if let Some(error) = self.spec_error.clone() {
+                    readable_error_row("Specs could not be loaded", error, cx)
+                } else {
+                    v_flex()
+                        .w_full()
+                        .gap_2()
+                        .child(Label::new("No specs loaded").color(Color::Muted))
+                        .child(
+                            Label::new(project.spec_detail())
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                        .into_any_element()
+                },
                 cx,
             ))
             .into_any_element()
     }
 
-    fn render_archived_specs(&self, cx: &mut Context<Self>) -> AnyElement {
-        let archived = self
-            .spec_board
-            .as_ref()
-            .map(|board| {
-                board
-                    .specs
-                    .iter()
-                    .filter(|spec| spec.spec.status == SpecStatus::Done)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        v_flex()
-            .w_full()
-            .gap_3()
-            .p_3()
-            .child(section_panel(
-                "Archived specs",
-                specs_list(archived, "No archived specs", cx),
-                cx,
-            ))
-            .into_any_element()
-    }
-
-    fn render_kanban(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_board(&self, cx: &mut Context<Self>) -> AnyElement {
         let Some(board) = self.spec_board.as_ref() else {
             return v_flex()
                 .w_full()
                 .gap_3()
                 .p_3()
                 .child(section_panel(
-                    "Kanban",
-                    Label::new(self.spec_error.clone().unwrap_or_else(|| {
-                        "Spec board is not loaded for this project".to_string()
-                    }))
-                    .color(Color::Muted)
-                    .into_any_element(),
+                    "Board",
+                    if let Some(error) = self.spec_error.clone() {
+                        readable_error_row("Board could not be loaded", error, cx)
+                    } else {
+                        v_flex()
+                            .w_full()
+                            .gap_2()
+                            .child(Label::new("No specs loaded").color(Color::Muted))
+                            .child(
+                                Label::new("Refresh this Sail or start it to load the board.")
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .into_any_element()
+                    },
                     cx,
                 ))
                 .into_any_element();
@@ -1484,19 +1716,24 @@ impl ProjectHomeItem {
             .agent_status
             .as_ref()
             .map(format_agent_status)
-            .or_else(|| self.agent_error.clone())
             .unwrap_or_else(|| project.agent_detail());
         let report = self
             .agent_report
             .as_ref()
             .map(format_agent_report)
-            .or_else(|| self.agent_report_error.clone())
             .unwrap_or_else(|| "Agent report has not been loaded yet".to_string());
 
         v_flex()
             .w_full()
             .gap_3()
             .p_3()
+            .when_some(self.agent_error.clone(), |element, error| {
+                element.child(section_panel(
+                    "Agent API",
+                    readable_error_row("Agent status could not be loaded", error, cx),
+                    cx,
+                ))
+            })
             .child(section_panel(
                 "Agent status",
                 v_flex()
@@ -1511,9 +1748,21 @@ impl ProjectHomeItem {
                     .into_any_element(),
                 cx,
             ))
+            .when_some(self.agent_report_error.clone(), |element, error| {
+                element.child(section_panel(
+                    "Report API",
+                    readable_error_row("Agent report could not be loaded", error, cx),
+                    cx,
+                ))
+            })
             .child(section_panel(
                 "Agent report",
-                Label::new(report).color(Color::Muted).into_any_element(),
+                copyable_text(
+                    format!("sing-project-copy-agent-report-{}", self.project_name),
+                    report,
+                    Color::Muted,
+                    LabelSize::Small,
+                ),
                 cx,
             ))
             .into_any_element()
@@ -1538,7 +1787,7 @@ impl ProjectHomeItem {
             .child(section_panel(
                 "Activity log",
                 if let Some(error) = error {
-                    Label::new(error).color(Color::Warning).into_any_element()
+                    readable_error_row("Activity could not be loaded", error, cx)
                 } else if log.is_empty() {
                     Label::new("No recent agent log lines")
                         .color(Color::Muted)
@@ -1547,11 +1796,29 @@ impl ProjectHomeItem {
                     v_flex()
                         .w_full()
                         .gap_1()
-                        .children(log.into_iter().map(|line| {
-                            Label::new(line)
-                                .size(LabelSize::Small)
-                                .color(Color::Muted)
-                                .buffer_font(cx)
+                        .children(log.into_iter().enumerate().map(|(index, line)| {
+                            h_flex()
+                                .w_full()
+                                .min_w(px(0.))
+                                .justify_between()
+                                .gap_2()
+                                .child(
+                                    Label::new(line.clone())
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted)
+                                        .buffer_font(cx)
+                                        .truncate(),
+                                )
+                                .child(
+                                    CopyButton::new(
+                                        format!(
+                                            "sing-project-copy-log-{}-{index}",
+                                            self.project_name
+                                        ),
+                                        line,
+                                    )
+                                    .icon_size(IconSize::XSmall),
+                                )
                                 .into_any_element()
                         }))
                         .into_any_element()
@@ -1567,7 +1834,7 @@ impl ProjectHomeItem {
             .gap_3()
             .p_3()
             .child(section_panel(
-                "Project settings",
+                "Sail settings",
                 v_flex()
                     .w_full()
                     .gap_1p5()
@@ -1639,20 +1906,201 @@ impl Item for ProjectHomeItem {
     }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        format!("{} Home", self.project_name).into()
+        format!("{} Sail", self.project_name).into()
     }
 
     fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
-        Some(Icon::new(IconName::Server))
+        Some(Icon::from_path("icons/mast.svg"))
     }
 
     fn tab_tooltip_text(&self, _: &App) -> Option<SharedString> {
-        Some(format!("Project home: {}", self.project_name).into())
+        Some(format!("Sail Home: {}", self.project_name).into())
     }
 }
 
 fn project_status_chip(project: &ProjectRow) -> Chip {
     Chip::new(project.status_label()).label_color(status_color(project.status))
+}
+
+fn mast_accent() -> gpui::Hsla {
+    hsla(10. / 360., 0.97, 0.57, 1.)
+}
+
+fn mast_mark(size: Pixels) -> AnyElement {
+    div()
+        .size(size)
+        .flex_none()
+        .rounded_sm()
+        .overflow_hidden()
+        .child(Icon::from_path("icons/mast.svg").size(IconSize::Medium))
+        .into_any_element()
+}
+
+fn sail_count_pill(label: &'static str, count: u32, color: Color, cx: &mut App) -> AnyElement {
+    h_flex()
+        .h(px(18.))
+        .items_center()
+        .gap_0p5()
+        .px_1()
+        .rounded_sm()
+        .border_1()
+        .border_color(cx.theme().colors().border_variant)
+        .bg(cx.theme().colors().editor_background)
+        .child(
+            Label::new(label)
+                .size(LabelSize::XSmall)
+                .color(Color::Muted)
+                .single_line(),
+        )
+        .child(
+            Label::new(count.to_string())
+                .size(LabelSize::XSmall)
+                .color(color)
+                .single_line(),
+        )
+        .into_any_element()
+}
+
+fn agent_color(project: &ProjectRow) -> Color {
+    match project.status {
+        ProjectStatus::Running if project.agent_session.running => Color::Accent,
+        ProjectStatus::Running if project.agent_session.available => Color::Muted,
+        ProjectStatus::Running => Color::Warning,
+        ProjectStatus::Stopped | ProjectStatus::NotCreated => Color::Muted,
+        ProjectStatus::Error => Color::Error,
+    }
+}
+
+fn home_metadata_pill(
+    icon: IconName,
+    label: impl Into<String>,
+    color: Color,
+    cx: &mut App,
+) -> AnyElement {
+    h_flex()
+        .h(px(24.))
+        .max_w(px(260.))
+        .items_center()
+        .gap_1()
+        .px_1p5()
+        .rounded_sm()
+        .border_1()
+        .border_color(cx.theme().colors().border_variant)
+        .bg(cx.theme().colors().panel_background)
+        .child(Icon::new(icon).size(IconSize::XSmall).color(color))
+        .child(
+            Label::new(label.into())
+                .size(LabelSize::XSmall)
+                .color(color)
+                .truncate(),
+        )
+        .into_any_element()
+}
+
+fn header_metric(
+    label: &'static str,
+    value: impl Into<String>,
+    color: Color,
+    cx: &mut App,
+) -> AnyElement {
+    v_flex()
+        .min_w(px(128.))
+        .gap_0p5()
+        .p_2()
+        .rounded_sm()
+        .border_1()
+        .border_color(cx.theme().colors().border_variant)
+        .bg(cx.theme().colors().panel_background)
+        .child(
+            Label::new(label)
+                .size(LabelSize::XSmall)
+                .color(Color::Muted),
+        )
+        .child(
+            Label::new(value.into())
+                .size(LabelSize::Small)
+                .color(color)
+                .truncate(),
+        )
+        .into_any_element()
+}
+
+fn toolbar_icon_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    tooltip: &'static str,
+    disabled: bool,
+    handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> AnyElement {
+    IconButton::new(id, icon)
+        .shape(IconButtonShape::Square)
+        .icon_size(IconSize::Small)
+        .style(ButtonStyle::Subtle)
+        .disabled(disabled)
+        .tooltip(Tooltip::text(tooltip))
+        .on_click(handler)
+        .into_any_element()
+}
+
+fn readable_error_row(summary: &'static str, details: String, cx: &mut App) -> AnyElement {
+    h_flex()
+        .w_full()
+        .items_start()
+        .justify_between()
+        .gap_2()
+        .p_2()
+        .rounded_sm()
+        .border_1()
+        .border_color(cx.theme().colors().border_variant)
+        .bg(cx.theme().colors().panel_background)
+        .child(
+            h_flex()
+                .min_w(px(0.))
+                .gap_2()
+                .items_start()
+                .child(
+                    Icon::new(IconName::Warning)
+                        .size(IconSize::Small)
+                        .color(Color::Warning),
+                )
+                .child(
+                    v_flex()
+                        .min_w(px(0.))
+                        .gap_0p5()
+                        .child(
+                            Label::new(summary)
+                                .size(LabelSize::Small)
+                                .color(Color::Warning),
+                        )
+                        .child(
+                            Label::new("Use the debug copy action for the raw response.")
+                                .size(LabelSize::XSmall)
+                                .color(Color::Muted)
+                                .truncate(),
+                        ),
+                ),
+        )
+        .child(
+            CopyButton::new(format!("sing-project-copy-error-{summary}"), details)
+                .tooltip_label("Copy debug details"),
+        )
+        .into_any_element()
+}
+
+fn copyable_text(
+    id: impl Into<ElementId>,
+    value: impl Into<String>,
+    color: Color,
+    size: LabelSize,
+) -> AnyElement {
+    let value = value.into();
+    h_flex()
+        .min_w(px(0.))
+        .gap_1()
+        .items_center()
+        .child(Label::new(value.clone()).size(size).color(color).truncate())
+        .child(CopyButton::new(id, value).icon_size(IconSize::XSmall))
+        .into_any_element()
 }
 
 fn project_home_badges(project: &ProjectRow) -> Vec<AnyElement> {
@@ -1730,6 +2178,7 @@ fn section_panel(title: &'static str, content: AnyElement, cx: &mut App) -> AnyE
 }
 
 fn home_detail_line(label: &'static str, value: impl Into<String>, color: Color) -> AnyElement {
+    let value = value.into();
     h_flex()
         .w_full()
         .items_start()
@@ -1739,7 +2188,12 @@ fn home_detail_line(label: &'static str, value: impl Into<String>, color: Color)
                 .w(px(96.))
                 .child(Label::new(label).size(LabelSize::Small).color(Color::Muted)),
         )
-        .child(Label::new(value.into()).size(LabelSize::Small).color(color))
+        .child(copyable_text(
+            format!("sing-project-copy-detail-{label}-{value}"),
+            value,
+            color,
+            LabelSize::Small,
+        ))
         .into_any_element()
 }
 
@@ -1796,8 +2250,20 @@ fn spec_row(spec: &BoardSpecRecord, cx: &mut App) -> AnyElement {
                 }),
         )
         .child(
-            Chip::new(spec_status_label(spec.spec.status))
-                .label_color(spec_status_color(spec.spec.status)),
+            h_flex()
+                .gap_1()
+                .items_center()
+                .child(
+                    CopyButton::new(
+                        format!("sing-project-copy-spec-{}", spec.spec.id),
+                        spec_title(spec),
+                    )
+                    .icon_size(IconSize::XSmall),
+                )
+                .child(
+                    Chip::new(spec_status_label(spec.spec.status))
+                        .label_color(spec_status_color(spec.spec.status)),
+                ),
         )
         .tooltip(Tooltip::text(format!(
             "{}: {}",
@@ -1976,7 +2442,7 @@ impl Render for SingProjectPanel {
 
 impl Panel for SingProjectPanel {
     fn persistent_name() -> &'static str {
-        "Projects"
+        "Sails"
     }
 
     fn panel_key() -> &'static str {
@@ -2013,7 +2479,7 @@ impl Panel for SingProjectPanel {
     }
 
     fn icon_tooltip(&self, _: &Window, _: &App) -> Option<&'static str> {
-        Some("Projects")
+        Some("Sails")
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {
