@@ -156,17 +156,29 @@ function download_and_unpack() {
     local url=$1
     local path_to_unpack=$2
     local target_path=$3
+    local archive_path="${path_to_unpack#./}"
+    local archive_path_with_dot="./${archive_path}"
+    local archive_file
 
     temp_dir=$(mktemp -d)
+    archive_file="${temp_dir}/archive.tar.gz"
 
     if ! command -v curl &> /dev/null; then
         echo "curl is not installed. Please install curl to continue."
         exit 1
     fi
 
-    curl --silent --fail --location "$url" | tar -xvz -C "$temp_dir" -f - $path_to_unpack
+    curl --silent --fail --location "$url" --output "$archive_file"
 
-    mv "$temp_dir/$path_to_unpack" "$target_path"
+    if ! tar -xvz -C "$temp_dir" -f "$archive_file" "$archive_path" &&
+        ! tar -xvz -C "$temp_dir" -f "$archive_file" "$archive_path_with_dot"; then
+        echo "Could not extract ${archive_path} from ${url}"
+        tar -tzf "$archive_file" | sed -n '1,80p'
+        rm -rf "$temp_dir"
+        exit 1
+    fi
+
+    mv "$temp_dir/$archive_path" "$target_path"
 
     rm -rf "$temp_dir"
 }
