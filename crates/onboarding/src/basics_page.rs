@@ -24,19 +24,12 @@ use crate::{
     theme_preview::{ThemePreviewStyle, ThemePreviewTile},
 };
 
-const LIGHT_THEMES: [&str; 3] = ["One Light", "Ayu Light", "Gruvbox Light"];
-const DARK_THEMES: [&str; 3] = ["One Dark", "Ayu Dark", "Gruvbox Dark"];
-const FAMILY_NAMES: [SharedString; 3] = [
-    SharedString::new_static("One"),
-    SharedString::new_static("Ayu"),
-    SharedString::new_static("Gruvbox"),
-];
+const MAST_LIGHT_THEME: &str = "Mast Light";
+const MAST_DARK_THEME: &str = "Mast Dark";
 
 fn get_theme_family_themes(theme_name: &str) -> Option<(&'static str, &'static str)> {
-    for i in 0..LIGHT_THEMES.len() {
-        if LIGHT_THEMES[i] == theme_name || DARK_THEMES[i] == theme_name {
-            return Some((LIGHT_THEMES[i], DARK_THEMES[i]));
-        }
+    if theme_name == MAST_LIGHT_THEME || theme_name == MAST_DARK_THEME {
+        return Some((MAST_LIGHT_THEME, MAST_DARK_THEME));
     }
     None
 }
@@ -94,14 +87,14 @@ fn render_theme_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement
             h_flex()
                 .gap_2()
                 .justify_between()
-                .children(render_theme_previews(tab_index, &theme_selection, cx)),
+                .child(render_theme_preview(tab_index, &theme_selection, cx)),
         );
 
-    fn render_theme_previews(
+    fn render_theme_preview(
         tab_index: &mut isize,
         theme_selection: &ThemeSelection,
         cx: &mut App,
-    ) -> [impl IntoElement; 3] {
+    ) -> impl IntoElement {
         let system_appearance = SystemAppearance::global(cx);
         let theme_registry = ThemeRegistry::global(cx);
 
@@ -118,84 +111,75 @@ fn render_theme_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement
             ThemeAppearanceMode::System => *system_appearance,
         };
         let current_theme_name: SharedString = theme_selection.name(appearance).0.into();
-
-        let theme_names = match appearance {
-            Appearance::Light => LIGHT_THEMES,
-            Appearance::Dark => DARK_THEMES,
+        let light = theme_registry.get(MAST_LIGHT_THEME).unwrap();
+        let dark = theme_registry.get(MAST_DARK_THEME).unwrap();
+        let theme = match appearance {
+            Appearance::Light => light.clone(),
+            Appearance::Dark => dark.clone(),
         };
+        let is_selected =
+            current_theme_name == MAST_LIGHT_THEME || current_theme_name == MAST_DARK_THEME;
+        let colors = cx.theme().colors();
 
-        let themes = theme_names.map(|theme| theme_registry.get(theme).unwrap());
+        v_flex()
+            .w_full()
+            .items_center()
+            .gap_1()
+            .child(
+                h_flex()
+                    .id("mast-theme-onboarding")
+                    .relative()
+                    .w_full()
+                    .border_2()
+                    .border_color(colors.border_transparent)
+                    .rounded(ThemePreviewTile::ROOT_RADIUS)
+                    .map(|this| {
+                        if is_selected {
+                            this.border_color(colors.border_selected)
+                        } else {
+                            this.opacity(0.8).hover(|s| s.border_color(colors.border))
+                        }
+                    })
+                    .tab_index({
+                        *tab_index += 1;
+                        *tab_index - 1
+                    })
+                    .focus(|mut style| {
+                        style.border_color = Some(colors.border_focused);
+                        style
+                    })
+                    .on_click({
+                        let theme_name = theme.name.clone();
+                        let current_theme_name = current_theme_name.clone();
 
-        [0, 1, 2].map(|index| {
-            let theme = &themes[index];
-            let is_selected = theme.name == current_theme_name;
-            let name = theme.name.clone();
-            let colors = cx.theme().colors();
-
-            v_flex()
-                .w_full()
-                .items_center()
-                .gap_1()
-                .child(
-                    h_flex()
-                        .id(name)
-                        .relative()
-                        .w_full()
-                        .border_2()
-                        .border_color(colors.border_transparent)
-                        .rounded(ThemePreviewTile::ROOT_RADIUS)
-                        .map(|this| {
-                            if is_selected {
-                                this.border_color(colors.border_selected)
-                            } else {
-                                this.opacity(0.8).hover(|s| s.border_color(colors.border))
-                            }
-                        })
-                        .tab_index({
-                            *tab_index += 1;
-                            *tab_index - 1
-                        })
-                        .focus(|mut style| {
-                            style.border_color = Some(colors.border_focused);
-                            style
-                        })
-                        .on_click({
-                            let theme_name = theme.name.clone();
-                            let current_theme_name = current_theme_name.clone();
-
-                            move |_, _, cx| {
-                                write_theme_change(theme_name.clone(), theme_mode, cx);
-                                telemetry::event!(
-                                    "Welcome Theme Changed",
-                                    from = current_theme_name,
-                                    to = theme_name
-                                );
-                            }
-                        })
-                        .map(|this| {
-                            if theme_mode == ThemeAppearanceMode::System {
-                                let (light, dark) = (
-                                    theme_registry.get(LIGHT_THEMES[index]).unwrap(),
-                                    theme_registry.get(DARK_THEMES[index]).unwrap(),
-                                );
-                                this.child(
-                                    ThemePreviewTile::new(light, theme_seed)
-                                        .style(ThemePreviewStyle::SideBySide(dark)),
-                                )
-                            } else {
-                                this.child(
-                                    ThemePreviewTile::new(theme.clone(), theme_seed)
-                                        .style(ThemePreviewStyle::Bordered),
-                                )
-                            }
-                        }),
-                )
-                .child(
-                    Label::new(FAMILY_NAMES[index].clone())
-                        .color(Color::Muted)
-                        .size(LabelSize::Small),
-                )
-        })
+                        move |_, _, cx| {
+                            write_theme_change(theme_name.clone(), theme_mode, cx);
+                            telemetry::event!(
+                                "Welcome Theme Changed",
+                                from = current_theme_name,
+                                to = theme_name
+                            );
+                        }
+                    })
+                    .map(|this| {
+                        if theme_mode == ThemeAppearanceMode::System {
+                            this.child(
+                                ThemePreviewTile::new(light, theme_seed)
+                                    .style(ThemePreviewStyle::SideBySide(dark)),
+                            )
+                        } else {
+                            this.child(
+                                ThemePreviewTile::new(theme.clone(), theme_seed)
+                                    .style(ThemePreviewStyle::Bordered),
+                            )
+                        }
+                    }),
+            )
+            .child(
+                Label::new(SharedString::new_static("Mast"))
+                    .color(Color::Muted)
+                    .size(LabelSize::Small),
+            )
     }
 
     fn write_mode_change(mode: ThemeAppearanceMode, cx: &mut App) {
